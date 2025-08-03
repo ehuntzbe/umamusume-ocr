@@ -7,7 +7,7 @@ from selenium.webdriver.firefox.service import Service as FirefoxService
 from selenium.webdriver.firefox.options import Options
 
 # --- Paths ---
-csv_path = r"C:\Users\skyfj\Documents\My Games\Umamusume\simulator inputs\uma_data.csv"
+csv_path = r"C:\Users\skyfj\Documents\My Games\Umamusume\umamusume-ocr\umamusume-ocr\testout2.csv"
 gecko_path = r"C:\Windows\geckodriver.exe"
 firefox_path = r"C:\Program Files\Mozilla Firefox\firefox.exe"
 
@@ -60,11 +60,11 @@ def add_skills(row):
     skills = str(row["Skills"]).split("|")
 
     # ✅ Working — do not change
-    driver.find_element(By.CSS_SELECTOR, ".selected .addSkillButton").click()
-    time.sleep(0.5)
-    search_input = driver.find_element(By.CSS_SELECTOR, ".selected .horseSkillPickerWrapper input.filterSearch")
-
     for skill_name in skills:
+        driver.find_element(By.CSS_SELECTOR, ".selected .addSkillButton").click()
+        time.sleep(0.5)
+        search_input = driver.find_element(By.CSS_SELECTOR, ".selected .horseSkillPickerWrapper input.filterSearch")
+
         trimmed = skill_name.strip()
         if not trimmed:
             continue
