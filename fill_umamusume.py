@@ -40,22 +40,6 @@ def fill_stats(row):
         print(f"→ {k}: {row[k]}")
         simulate_input(el, row[k])
 
-def fill_aptitudes_and_strategy(row):
-    def select_dropdown_value(container_selector, value):
-        dropdown = driver.find_element(By.CSS_SELECTOR, container_selector + " select")
-        dropdown.click()
-        for option in dropdown.find_elements(By.TAG_NAME, "option"):
-            if option.text.strip() == str(value):
-                option.click()
-                break
-        time.sleep(0.2)
-
-    # Surface, Distance, Strategy, Strategy Aptitude (they are <select>s)
-    select_dropdown_value(".selected .horseAptitudes > div:nth-of-type(1)", row["Surface"])
-    select_dropdown_value(".selected .horseAptitudes > div:nth-of-type(2)", row["Distance"])
-    select_dropdown_value(".selected .horseAptitudes > div:nth-of-type(3)", row["Strategy"])
-    select_dropdown_value(".selected .horseAptitudes > div:nth-of-type(4)", row["StrategyApt"])
-
 def add_skills(row):
     skills = str(row["Skills"]).split("|")
 
