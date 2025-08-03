@@ -67,6 +67,13 @@ def add_skills(row):
             time.sleep(0.2)
         except Exception:
             print(f"❌ Skill not found: {trimmed}")
+                try:
+                    driver.execute_script("""
+                        const overlay = document.querySelector('.selected .horseSkillPickerOverlay');
+                        if (overlay) overlay.click();
+                    """)
+                except Exception:
+                    print("⚠️ Could not close skill picker overlay.")
 
     # ✅ Close popup with JavaScript to avoid overlay issues
     try:
