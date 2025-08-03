@@ -1,4 +1,7 @@
+import argparse
 import time
+from pathlib import Path
+
 import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -7,21 +10,28 @@ from selenium.webdriver.firefox.service import Service as FirefoxService
 from selenium.webdriver.firefox.options import Options
 
 # --- Paths ---
-csv_path = r"C:\Users\skyfj\Documents\My Games\Umamusume\umamusume-ocr\umamusume-ocr\testout2.csv"
 gecko_path = r"C:\Windows\geckodriver.exe"
 firefox_path = r"C:\Program Files\Mozilla Firefox\firefox.exe"
 
-# --- Setup ---
-df = pd.read_csv(csv_path)
-options = Options()
-options.binary_location = firefox_path
-service = FirefoxService(executable_path=gecko_path)
-driver = webdriver.Firefox(service=service, options=options)
-driver.maximize_window()
-driver.get("https://alpha123.github.io/uma-tools/umalator-global/")
-time.sleep(1)
 
-# --- Helpers ---
+def load_dataframe(csv_file: str) -> pd.DataFrame:
+    """Load the CSV from the inputs directory."""
+    inputs_dir = Path(__file__).resolve().parent / "inputs"
+    csv_path = inputs_dir / csv_file
+    return pd.read_csv(csv_path)
+
+
+def init_driver() -> webdriver.Firefox:
+    options = Options()
+    options.binary_location = firefox_path
+    service = FirefoxService(executable_path=gecko_path)
+    driver = webdriver.Firefox(service=service, options=options)
+    driver.maximize_window()
+    driver.get("https://alpha123.github.io/uma-tools/umalator-global/")
+    time.sleep(1)
+    return driver
+
+
 def simulate_input(el, value):
     el.click()
     el.send_keys(Keys.CONTROL + "a")
@@ -33,73 +43,92 @@ def simulate_input(el, value):
     driver.execute_script("arguments[0].dispatchEvent(new Event('change', { bubbles: true }))", el)
     time.sleep(0.2)
 
+
 def fill_stats(row):
     stat_inputs = driver.find_elements(By.CSS_SELECTOR, "#umaPane .selected .horseParam input")
-    keys = ['Speed', 'Stamina', 'Power', 'Guts', 'Wit']
+    keys = ["Speed", "Stamina", "Power", "Guts", "Wit"]
     for k, el in zip(keys, stat_inputs):
         print(f"→ {k}: {row[k]}")
         simulate_input(el, row[k])
 
+
+def _xpath_text_literal(text: str) -> str:
+    """Return an XPath-safe string literal for the given text."""
+    if "'" not in text:
+        return f"'{text}'"
+    if '"' not in text:
+        return f'"{text}"'
+    parts = text.split("'")
+    return "concat(" + ", \"'\", ".join(f"'{p}'" for p in parts) + ")"
+
+
+def _close_skill_picker():
+    try:
+        driver.execute_script(
+            """
+            const overlay = document.querySelector('.selected .horseSkillPickerOverlay');
+            if (overlay) overlay.click();
+            """
+        )
+    except Exception:
+        print("⚠️ Could not close skill picker overlay.")
+
+
 def add_skills(row):
     skills = str(row["Skills"]).split("|")
 
-    # ✅ Working — do not change
     for skill_name in skills:
-        driver.find_element(By.CSS_SELECTOR, ".selected .addSkillButton").click()
-        time.sleep(0.5)
-        search_input = driver.find_element(By.CSS_SELECTOR, ".selected .horseSkillPickerWrapper input.filterSearch")
-
         trimmed = skill_name.strip()
         if not trimmed:
             continue
-        print(f"🔍 Adding skill: {trimmed}")
+        driver.find_element(By.CSS_SELECTOR, ".selected .addSkillButton").click()
+        time.sleep(0.5)
+        search_input = driver.find_element(
+            By.CSS_SELECTOR, ".selected .horseSkillPickerWrapper input.filterSearch"
+        )
+        search_input.send_keys(trimmed)
 
-        # ✅ FIXED: Scope result to .selected popup only
+        print(f"🔍 Adding skill: {trimmed}")
+        xpath = (
+            "//div[contains(@class,'selected')]//div[contains(@class,'horseSkillPickerWrapper')]//span[@class='skillName'"
+            f" and normalize-space(text())={_xpath_text_literal(trimmed)}]"
+        )
         try:
-            result = driver.find_element(
-                By.XPATH,
-                f"//div[contains(@class,'selected')]//div[contains(@class,'horseSkillPickerWrapper')]//span[@class='skillName' and normalize-space(text())='{trimmed}']"
-            )
+            result = driver.find_element(By.XPATH, xpath)
             result.click()
             time.sleep(0.2)
         except Exception:
             print(f"❌ Skill not found: {trimmed}")
-            try:
-                driver.execute_script("""
-                    const overlay = document.querySelector('.selected .horseSkillPickerOverlay');
-                    if (overlay) overlay.click();
-                """)
-            except Exception:
-                print("⚠️ Could not close skill picker overlay.")
-
-    # ✅ Close popup with JavaScript to avoid overlay issues
-    try:
-        driver.execute_script("""
-            const overlay = document.querySelector('.selected .horseSkillPickerOverlay');
-            if (overlay) overlay.click();
-        """)
-    except Exception:
-        print("⚠️ Could not close skill picker overlay.")
-    time.sleep(0.5)
+        finally:
+            _close_skill_picker()
+            time.sleep(0.2)
 
 
-# --- Main Routine ---
 def fill_umamusume(row):
     fill_stats(row)
     add_skills(row)
 
-# Fill Umamusume 1 (first tab)
-fill_umamusume(df.iloc[0])
 
-# Switch to Umamusume 2
-for tab in driver.find_elements(By.CLASS_NAME, "umaTab"):
-    if "selected" not in tab.get_attribute("class"):
-        tab.click()
-        break
-time.sleep(0.5)
+def run(df: pd.DataFrame):
+    for idx, row in df.iterrows():
+        if idx > 0:
+            tabs = driver.find_elements(By.CLASS_NAME, "umaTab")
+            tabs[idx].click()
+            time.sleep(0.5)
+        fill_umamusume(row)
 
-# Fill Umamusume 2 (second tab)
-fill_umamusume(df.iloc[1])
 
-print("✅ All done!")
-# driver.quit()
+def main(csv_file: str):
+    global driver
+    df = load_dataframe(csv_file)
+    driver = init_driver()
+    run(df)
+    print("✅ All done!")
+    # driver.quit()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Fill Uma Musume data from CSV")
+    parser.add_argument("csv_file", help="CSV filename located in the inputs directory")
+    args = parser.parse_args()
+    main(args.csv_file)
