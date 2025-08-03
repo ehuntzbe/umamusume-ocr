@@ -3,28 +3,23 @@ import re
 import sys
 from rapidocr_onnxruntime import RapidOCR
 from rapidfuzz import process, fuzz
+from pathlib import Path
 
-# Canonical skill names we expect in the samples
-CANONICAL_SKILLS = [
-    "Flashy☆Landing",
-    "Professor of Curvature",
-    "Straightaway Adept",
-    "Breath of Fresh Air",
-    "Early Lead",
-    "Escape Artist",
-    "Front Runner Corners ○",
-    "Leader's Pride",
-    "Victoria Por Plancha ☆",
-    "Maverick ◎",
-    "Corner Recovery ○",
-    "Taking the Lead",
-    "Final Push",
-    "Moxie",
-]
+
+def _load_skills() -> list[str]:
+    """Load canonical skill names from the skills file."""
+    skill_file = Path(__file__).with_name("skill_names.txt")
+    with open(skill_file, encoding="utf-8") as f:
+        return [line.strip() for line in f if line.strip()]
+
+
+CANONICAL_SKILLS = _load_skills()
+
 
 # Normalization helper
 def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", s.lower())
+
 
 CANONICAL_MAP = {_norm(name): name for name in CANONICAL_SKILLS}
 
