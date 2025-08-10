@@ -12,6 +12,10 @@ import numpy as np
 from dotenv import load_dotenv
 from rapidocr_onnxruntime import RapidOCR
 from rapidfuzz import process, fuzz
+import json
+
+# Reuse the skill name data source from uma_csv_to_url
+from uma_csv_to_url import REPO_URL_TOOLS, TOOLS_DIR, ensure_repo
 
 
 ENV_PATH = Path(__file__).with_name(".env")
@@ -27,15 +31,17 @@ logger.debug("Environment loaded from %s with log level %s", ENV_PATH, LOG_LEVEL
 
 
 def _load_skills() -> list[str]:
-    """Load canonical skill names from the skills file."""
-    skill_file = Path(__file__).with_name("skill_names.txt")
+    """Load canonical skill names from the uma-tools repository."""
+    ensure_repo(REPO_URL_TOOLS, TOOLS_DIR)
+    skill_file = TOOLS_DIR / "umalator-global" / "skillnames.json"
     logger.debug("Loading skills from %s", skill_file)
     try:
         with open(skill_file, encoding="utf-8") as f:
-            skills = [line.strip() for line in f if line.strip()]
+            data = json.load(f)
     except FileNotFoundError:
         logger.error("Skill file not found: %s", skill_file)
         return []
+    skills = [names[0] for names in data.values() if names]
     logger.info("Loaded %d skills", len(skills))
     return skills
 
