@@ -7,6 +7,8 @@ from itertools import zip_longest
 from pathlib import Path
 
 import cv2
+import math
+import numpy as np
 from dotenv import load_dotenv
 from rapidocr_onnxruntime import RapidOCR
 from rapidfuzz import process, fuzz
@@ -126,11 +128,15 @@ def _detect_circle(img, rect):
     )
     if circles is None:
         return None
-    circles = circles[0]
-    if len(circles) >= 2:
-        radii = sorted(c[2] for c in circles)
-        if radii[-1] - radii[0] > 3:
-            return "◎"
+    cx, cy, r = max(circles[0], key=lambda c: c[2])
+    canny = cv2.Canny(gray, 50, 150)
+    mask = np.zeros_like(canny)
+    inner_r = int(r * 0.55)
+    cv2.circle(mask, (int(cx), int(cy)), inner_r, 255, 2)
+    count = cv2.countNonZero(cv2.bitwise_and(canny, mask))
+    coverage = count / (2 * math.pi * inner_r)
+    if coverage > 0.6:
+        return "◎"
     return "○"
 
 
