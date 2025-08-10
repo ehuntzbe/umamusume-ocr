@@ -1,9 +1,10 @@
 import csv
 import re
 import sys
+from pathlib import Path
+
 from rapidocr_onnxruntime import RapidOCR
 from rapidfuzz import process, fuzz
-from pathlib import Path
 
 
 def _load_skills() -> list[str]:
@@ -84,7 +85,12 @@ def write_csv(rows, output):
 
 
 if __name__ == "__main__":
-    img1, img2, out = sys.argv[1], sys.argv[2], sys.argv[3]
-    rows = [extract(img1), extract(img2)]
-    write_csv(rows, out)
-    print("✅ CSV written to:", out)
+    base_dir = Path(__file__).with_name("data")
+    img1_name, img2_name = sys.argv[1], sys.argv[2]
+    img1_path = base_dir / img1_name
+    img2_path = base_dir / img2_name
+    output_path = base_dir / f"{Path(img1_name).stem}_{Path(img2_name).stem}.csv"
+
+    rows = [extract(str(img1_path)), extract(str(img2_path))]
+    write_csv(rows, output_path)
+    print("✅ CSV written to:", output_path)
