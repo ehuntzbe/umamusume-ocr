@@ -143,53 +143,35 @@ def csv_to_hash(csv_path: Path) -> str:
 
 
 def _prepare_static_assets() -> Path:
-    """Ensure UmaLator static assets are available under the served directory."""
+    """Ensure UmaLator static assets are available and return the base dir."""
     ensure_repo(REPO_URL_TOOLS, TOOLS_DIR)
-    global_dir = TOOLS_DIR / "umalator-global"
-
-    # Some assets are referenced with absolute "/uma-tools/..." URLs in the
-    # bundled JavaScript. Create a symlink within the served directory so
-    # those paths resolve correctly when the page requests them.
-    ut_link = global_dir / "uma-tools"
-    if not ut_link.exists():
-        try:
-            ut_link.symlink_to(TOOLS_DIR, target_is_directory=True)
-        except OSError:
-            pass
-
-    # Symlink large asset directories so relative paths resolve correctly
-    assets = {
-        "icons": TOOLS_DIR / "icons",
-        "courseimages": TOOLS_DIR / "courseimages",
-        "fonts": TOOLS_DIR / "fonts",
-        "strings": TOOLS_DIR / "strings",
-    }
-    for name, target in assets.items():
-        link = global_dir / name
-        if target.exists() and not link.exists():
-            try:
-                link.symlink_to(target, target_is_directory=True)
-            except OSError:
-                pass
-
-    # Link data files expected alongside the HTML bundle
-    for fname in ("skill_meta.json", "umas.json", "icons.json"):
-        src = TOOLS_DIR / fname
-        dst = global_dir / fname
-        if src.exists() and not dst.exists():
-            try:
-                dst.symlink_to(src)
-            except OSError:
-                pass
-
-    return global_dir
+    return TOOLS_DIR / "umalator-global"
 
 
 def start_server() -> tuple[http.server.ThreadingHTTPServer, threading.Thread, int]:
     """Serve the UmaLator UI over HTTP and return server and port."""
     serve_dir = _prepare_static_assets()
 
-    handler = partial(http.server.SimpleHTTPRequestHandler, directory=str(serve_dir))
+    class UmaToolsHandler(http.server.SimpleHTTPRequestHandler):
+        def translate_path(self, path: str) -> str:  # type: ignore[override]
+            # Strip any query parameters
+            path = urllib.parse.urlparse(path).path
+
+            if path.startswith("/uma-tools/"):
+                rel = path[len("/uma-tools/") :]
+                return str(TOOLS_DIR / rel)
+
+            first = path.lstrip("/").split("/", 1)[0]
+            if first in {"icons", "courseimages", "fonts", "strings"}:
+                rel = path.lstrip("/")
+                return str(TOOLS_DIR / rel)
+
+            if path.lstrip("/") in {"skill_meta.json", "umas.json", "icons.json"}:
+                return str(TOOLS_DIR / path.lstrip("/"))
+
+            return super().translate_path(path)
+
+    handler = partial(UmaToolsHandler, directory=str(serve_dir))
     httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
