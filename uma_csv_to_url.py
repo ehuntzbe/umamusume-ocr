@@ -142,11 +142,44 @@ def csv_to_hash(csv_path: Path) -> str:
     return build_share_hash(uma1, uma2)
 
 
-def start_server() -> tuple[http.server.ThreadingHTTPServer, threading.Thread, int]:
-    """Serve the uma-tools directory over HTTP and return server and port."""
+def _prepare_static_assets() -> Path:
+    """Ensure UmaLator static assets are available under the served directory."""
     ensure_repo(REPO_URL_TOOLS, TOOLS_DIR)
+    global_dir = TOOLS_DIR / "umalator-global"
 
-    handler = partial(http.server.SimpleHTTPRequestHandler, directory=str(TOOLS_DIR))
+    # Symlink large asset directories so relative paths resolve correctly
+    assets = {
+        "icons": TOOLS_DIR / "icons",
+        "courseimages": TOOLS_DIR / "courseimages",
+        "fonts": TOOLS_DIR / "fonts",
+        "strings": TOOLS_DIR / "strings",
+    }
+    for name, target in assets.items():
+        link = global_dir / name
+        if target.exists() and not link.exists():
+            try:
+                link.symlink_to(target, target_is_directory=True)
+            except OSError:
+                pass
+
+    # Link data files expected alongside the HTML bundle
+    for fname in ("skill_meta.json", "umas.json", "icons.json"):
+        src = TOOLS_DIR / fname
+        dst = global_dir / fname
+        if src.exists() and not dst.exists():
+            try:
+                dst.symlink_to(src)
+            except OSError:
+                pass
+
+    return global_dir
+
+
+def start_server() -> tuple[http.server.ThreadingHTTPServer, threading.Thread, int]:
+    """Serve the UmaLator UI over HTTP and return server and port."""
+    serve_dir = _prepare_static_assets()
+
+    handler = partial(http.server.SimpleHTTPRequestHandler, directory=str(serve_dir))
     httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
@@ -160,7 +193,7 @@ def main(argv: List[str]) -> int:
     csv_path = Path(argv[1])
     share_hash = csv_to_hash(csv_path)
     httpd, thread, port = start_server()
-    url = f"http://127.0.0.1:{port}/umalator-global/index.html#{share_hash}"
+    url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
     print(url)
     try:
         webbrowser.open(url)
