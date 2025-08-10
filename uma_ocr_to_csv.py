@@ -195,23 +195,34 @@ def extract(path: str) -> dict:
     return stats
 
 
-def write_csv(rows, output):
+def append_csv(row: dict, output: Path) -> None:
+    """Append a single row of stats to the CSV file, writing a header if needed."""
     fields = ["Speed", "Stamina", "Power", "Guts", "Wit", "Skills"]
-    with open(output, "w", newline="", encoding="utf-8") as f:
+    write_header = not output.exists()
+    with open(output, "a", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fields)
-        w.writeheader()
-        w.writerows(rows)
-    logger.debug("Wrote %d rows to %s", len(rows), output)
+        if write_header:
+            w.writeheader()
+        w.writerow(row)
+    logger.debug("Appended row to %s", output)
 
 
 if __name__ == "__main__":
     base_dir = Path(__file__).with_name("data")
-    img1_name, img2_name = sys.argv[1], sys.argv[2]
-    img1_path = base_dir / img1_name
-    img2_path = base_dir / img2_name
-    output_path = base_dir / f"{Path(img1_name).stem}_{Path(img2_name).stem}.csv"
+    processed_dir = base_dir / "processed"
+    processed_dir.mkdir(exist_ok=True)
+    output_path = base_dir / "runners.csv"
 
-    logger.info("Extracting data from %s and %s", img1_path, img2_path)
-    rows = [extract(str(img1_path)), extract(str(img2_path))]
-    write_csv(rows, output_path)
-    logger.info("CSV written to %s", output_path)
+    images = [p for p in base_dir.iterdir() if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg"}]
+    if not images:
+        logger.info("No images found in %s", base_dir)
+        sys.exit(0)
+
+    for img_path in images:
+        logger.info("Extracting data from %s", img_path)
+        row = extract(str(img_path))
+        append_csv(row, output_path)
+        img_path.rename(processed_dir / img_path.name)
+        logger.info("Moved %s to %s", img_path.name, processed_dir)
+
+    logger.info("Processed %d images", len(images))
