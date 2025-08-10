@@ -179,20 +179,40 @@ def start_server() -> tuple[http.server.ThreadingHTTPServer, threading.Thread, i
 
 
 def main(argv: List[str]) -> int:
-    if len(argv) != 2:
-        print(f"Usage: {argv[0]} <csv>")
-        return 1
-    csv_path = Path(argv[1])
-    share_hash = csv_to_hash(csv_path)
+    """Start the local server and interactively load CSV files.
+
+    A CSV file may be supplied on the command line for an initial load. While
+    the server is running, users can enter additional CSV paths to reload the
+    simulator without restarting the script. Pressing enter on an empty line
+    exits the program.
+    """
+
+    csv_path: Path | None = Path(argv[1]) if len(argv) > 1 else None
     httpd, thread, port = start_server()
-    url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
-    print(url)
     try:
-        webbrowser.open(url)
-    except Exception:
-        pass
-    try:
-        input("Press Enter to stop the local server...")
+        while True:
+            if csv_path is None:
+                user_input = input("CSV file path (blank to quit): ").strip()
+                if not user_input:
+                    break
+                csv_path = Path(user_input)
+            try:
+                share_hash = csv_to_hash(csv_path)
+            except Exception as exc:  # pragma: no cover - interactive error
+                print(f"Failed to load {csv_path}: {exc}")
+            else:
+                url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
+                print(url)
+                try:
+                    webbrowser.open(url)
+                except Exception:
+                    pass
+            user_input = input(
+                "Reload with another CSV? (path or blank to quit): "
+            ).strip()
+            if not user_input:
+                break
+            csv_path = Path(user_input)
     finally:
         httpd.shutdown()
         thread.join()
