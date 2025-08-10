@@ -49,6 +49,29 @@ def _load_skills() -> list[str]:
 CANONICAL_SKILLS = _load_skills()
 
 
+def _load_umas() -> list[str]:
+    """Load canonical runner names from the uma-tools repository."""
+    ensure_repo(REPO_URL_TOOLS, TOOLS_DIR)
+    uma_file = TOOLS_DIR / "umalator-global" / "umas.json"
+    logger.debug("Loading umas from %s", uma_file)
+    try:
+        with open(uma_file, encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        logger.error("Uma file not found: %s", uma_file)
+        return []
+    names: list[str] = []
+    for v in data.values():
+        for name in v.get("name", []):
+            if name:
+                names.append(name)
+    logger.info("Loaded %d umas", len(names))
+    return names
+
+
+CANONICAL_UMAS = _load_umas()
+
+
 # --- normalization ---------------------------------------------------------
 
 _CIRCLE_ALIASES = {
@@ -72,6 +95,7 @@ def _norm(s: str) -> str:
 
 
 CANONICAL_MAP = {_norm(name): name for name in CANONICAL_SKILLS}
+UMA_MAP = {_norm(name): name for name in CANONICAL_UMAS}
 
 OCR = RapidOCR()
 
@@ -152,6 +176,27 @@ def extract(path: str) -> dict:
     logger.debug("OCR returned %d text boxes", len(res))
     img = cv2.imread(path)
 
+    height, width = img.shape[:2]
+
+    # --- runner name --------------------------------------------------------
+    runner_name = ""
+    best_score = 0
+    for box, text, _ in res:
+        x0 = min(p[0] for p in box)
+        y0 = min(p[1] for p in box)
+        x1 = max(p[0] for p in box)
+        y1 = max(p[1] for p in box)
+        if y1 < 400 and x0 > width * 0.5:
+            key = _norm(text)
+            if not key:
+                continue
+            match = process.extractOne(key, UMA_MAP.keys(), scorer=fuzz.ratio)
+            if match and match[1] > best_score:
+                best_score = match[1]
+                runner_name = UMA_MAP[match[0]]
+    if not runner_name:
+        logger.warning("Runner name not detected in %s", path)
+
     # --- stats ---------------------------------------------------------------
     nums = []
     for box, text, _ in res:
@@ -195,6 +240,7 @@ def extract(path: str) -> dict:
                 logger.debug("Matched skill: %s", canonical)
 
     stats["Skills"] = "|".join(skills)
+    stats["Name"] = runner_name
     logger.info("Extracted stats %s with %d skills", stats, len(skills))
     if not skills:
         logger.warning("No skills matched in %s", path)
@@ -203,7 +249,7 @@ def extract(path: str) -> dict:
 
 def append_csv(row: dict, output: Path) -> None:
     """Append a single row of stats to the CSV file, writing a header if needed."""
-    fields = ["Speed", "Stamina", "Power", "Guts", "Wit", "Skills"]
+    fields = ["Name", "Speed", "Stamina", "Power", "Guts", "Wit", "Skills"]
     write_header = not output.exists()
     with open(output, "a", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fields)
