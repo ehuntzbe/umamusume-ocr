@@ -130,13 +130,11 @@ def build_share_hash(uma1: Horse, uma2: Horse) -> str:
     return urllib.parse.quote(base64.b64encode(zipped).decode("ascii"))
 
 
-def csv_to_hash(csv_path: Path) -> str:
-    """Return the encoded share hash for two rows of CSV data."""
-    skill_map = load_skill_mapping()
-    with open(csv_path, newline="", encoding="utf-8") as f:
-        rows = list(csv.DictReader(f))
+def csv_to_hash(rows: List[Dict[str, str]]) -> str:
+    """Return the encoded share hash for two rows of runner data."""
     if len(rows) < 2:
-        raise ValueError("CSV must contain at least two rows")
+        raise ValueError("Need at least two rows")
+    skill_map = load_skill_mapping()
     uma1 = parse_horse(rows[0], skill_map)
     uma2 = parse_horse(rows[1], skill_map)
     return build_share_hash(uma1, uma2)
@@ -179,11 +177,35 @@ def start_server() -> tuple[http.server.ThreadingHTTPServer, threading.Thread, i
 
 
 def main(argv: List[str]) -> int:
-    if len(argv) != 2:
-        print(f"Usage: {argv[0]} <csv>")
+    data_dir = Path(__file__).with_name("data")
+    csv_path = data_dir / "runners.csv"
+    try:
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            runners = list(csv.DictReader(f))
+    except FileNotFoundError:
+        print(f"No runner data found at {csv_path}")
         return 1
-    csv_path = Path(argv[1])
-    share_hash = csv_to_hash(csv_path)
+    if len(runners) < 2:
+        print("Need at least two runners to compare")
+        return 1
+
+    for idx, row in enumerate(runners, 1):
+        summary = ", ".join(
+            f"{k}:{row.get(k, '')}" for k in ["Speed", "Stamina", "Power", "Guts", "Wit"]
+        )
+        print(f"{idx}: {summary}")
+
+    try:
+        idx1 = int(input("Select runner 1: ")) - 1
+        idx2 = int(input("Select runner 2: ")) - 1
+    except ValueError:
+        print("Invalid selection")
+        return 1
+    if not (0 <= idx1 < len(runners)) or not (0 <= idx2 < len(runners)):
+        print("Selection out of range")
+        return 1
+
+    share_hash = csv_to_hash([runners[idx1], runners[idx2]])
     httpd, thread, port = start_server()
     url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
     print(url)
