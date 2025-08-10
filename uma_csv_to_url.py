@@ -147,6 +147,16 @@ def _prepare_static_assets() -> Path:
     ensure_repo(REPO_URL_TOOLS, TOOLS_DIR)
     global_dir = TOOLS_DIR / "umalator-global"
 
+    # Some assets are referenced with absolute "/uma-tools/..." URLs in the
+    # bundled JavaScript. Create a symlink within the served directory so
+    # those paths resolve correctly when the page requests them.
+    ut_link = global_dir / "uma-tools"
+    if not ut_link.exists():
+        try:
+            ut_link.symlink_to(TOOLS_DIR, target_is_directory=True)
+        except OSError:
+            pass
+
     # Symlink large asset directories so relative paths resolve correctly
     assets = {
         "icons": TOOLS_DIR / "icons",
