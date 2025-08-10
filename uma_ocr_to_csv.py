@@ -3,10 +3,8 @@ import logging
 import os
 import re
 import sys
-from itertools import zip_longest
 from pathlib import Path
 
-import cv2
 from dotenv import load_dotenv
 from rapidocr_onnxruntime import RapidOCR
 from rapidfuzz import process, fuzz
@@ -41,26 +39,9 @@ def _load_skills() -> list[str]:
 CANONICAL_SKILLS = _load_skills()
 
 
-# --- normalization ---------------------------------------------------------
-
-_CIRCLE_ALIASES = {
-    "o": "○",
-    "O": "○",
-    "0": "○",
-    "〇": "○",
-    "◎": "◎",
-    "○": "○",
-}
-
-
-def _normalize_circles(text: str) -> str:
-    """Replace common lookalikes of the circle glyphs."""
-    return "".join(_CIRCLE_ALIASES.get(ch, ch) for ch in text)
-
-
+# Normalization helper
 def _norm(s: str) -> str:
-    s = _normalize_circles(s)
-    return re.sub(r"[^a-z0-9◎○]", "", s.lower())
+    return re.sub(r"[^a-z0-9]", "", s.lower())
 
 
 CANONICAL_MAP = {_norm(name): name for name in CANONICAL_SKILLS}
@@ -68,77 +49,10 @@ CANONICAL_MAP = {_norm(name): name for name in CANONICAL_SKILLS}
 OCR = RapidOCR()
 
 
-def _group_column(lines):
-    lines.sort(key=lambda l: l[1])
-    grouped = []
-    for x0, y0, x1, y1, text in lines:
-        if grouped and y0 - grouped[-1][3] < 25:
-            grouped[-1][4].append(text)
-            grouped[-1][2] = max(grouped[-1][2], x1)
-            grouped[-1][3] = max(grouped[-1][3], y1)
-        else:
-            grouped.append([x0, y0, x1, y1, [text]])
-    return grouped
-
-
-def _group_skills(res):
-    lines = []
-    for box, text, _ in res:
-        x0 = min(p[0] for p in box)
-        y0 = min(p[1] for p in box)
-        x1 = max(p[0] for p in box)
-        y1 = max(p[1] for p in box)
-        if y0 < 850:
-            continue
-        lines.append([x0, y0, x1, y1, text])
-
-    if not lines:
-        return []
-    xs = [l[0] for l in lines]
-    mid = (min(xs) + max(xs)) / 2
-    left = [l for l in lines if l[0] < mid]
-    right = [l for l in lines if l[0] >= mid]
-    left_g = _group_column(left)
-    right_g = _group_column(right)
-    groups = []
-    for l, r in zip_longest(left_g, right_g):
-        if l:
-            groups.append((l[0], l[1], l[2], l[3], " ".join(l[4])))
-        if r:
-            groups.append((r[0], r[1], r[2], r[3], " ".join(r[4])))
-    return groups
-
-
-def _detect_circle(img, rect):
-    x0, y0, x1, y1 = map(int, rect)
-    margin = 5
-    xs = max(0, x1 - 50)
-    xe = min(img.shape[1], x1 + 30)
-    ys = max(0, y0 - margin)
-    ye = min(img.shape[0], y1 + margin)
-    crop = img[ys:ye, xs:xe]
-    if crop.size == 0:
-        return None
-    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-    gray = cv2.GaussianBlur(gray, (5, 5), 0)
-    circles = cv2.HoughCircles(
-        gray, cv2.HOUGH_GRADIENT, 1, 20, param1=50, param2=15, minRadius=5, maxRadius=30
-    )
-    if circles is None:
-        return None
-    circles = circles[0]
-    if len(circles) >= 2:
-        radii = sorted(c[2] for c in circles)
-        if radii[-1] - radii[0] > 3:
-            return "◎"
-    return "○"
-
-
 def extract(path: str) -> dict:
     logger.info("Running OCR on %s", path)
     res, _ = OCR(path)
     logger.debug("OCR returned %d text boxes", len(res))
-    img = cv2.imread(path)
 
     # --- stats ---------------------------------------------------------------
     nums = []
@@ -164,13 +78,17 @@ def extract(path: str) -> dict:
     # --- skills --------------------------------------------------------------
     skills = []
     seen = set()
-
-    groups = _group_skills(res)
-    logger.debug("Grouped into %d skill boxes", len(groups))
-    for x0, y0, x1, y1, text in groups:
-        circle = _detect_circle(img, (x0, y0, x1, y1))
-        if circle and circle not in text:
-            text = f"{text} {circle}"
+    sorted_res = sorted(
+        res,
+        key=lambda item: (
+            round(min(p[1] for p in item[0]) / 50),
+            min(p[0] for p in item[0]),
+        ),
+    )
+    for box, text, _ in sorted_res:
+        y0 = min(p[1] for p in box)
+        if y0 < 950:  # skip upper text regions
+            continue
         key = _norm(text)
         if not key:
             continue
