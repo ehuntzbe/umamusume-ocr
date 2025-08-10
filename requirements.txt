@@ -1,2 +1,3 @@
 rapidocr-onnxruntime
 rapidfuzz
+python-dotenv

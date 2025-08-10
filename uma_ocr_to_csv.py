@@ -1,17 +1,39 @@
 import csv
+import logging
+import os
 import re
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
 from rapidocr_onnxruntime import RapidOCR
 from rapidfuzz import process, fuzz
+
+
+ENV_PATH = Path(__file__).with_name(".env")
+load_dotenv(ENV_PATH)
+
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(levelname)s:%(name)s:%(message)s",
+)
+logger = logging.getLogger(__name__)
+logger.debug("Environment loaded from %s with log level %s", ENV_PATH, LOG_LEVEL)
 
 
 def _load_skills() -> list[str]:
     """Load canonical skill names from the skills file."""
     skill_file = Path(__file__).with_name("skill_names.txt")
-    with open(skill_file, encoding="utf-8") as f:
-        return [line.strip() for line in f if line.strip()]
+    logger.debug("Loading skills from %s", skill_file)
+    try:
+        with open(skill_file, encoding="utf-8") as f:
+            skills = [line.strip() for line in f if line.strip()]
+    except FileNotFoundError:
+        logger.error("Skill file not found: %s", skill_file)
+        return []
+    logger.info("Loaded %d skills", len(skills))
+    return skills
 
 
 CANONICAL_SKILLS = _load_skills()
@@ -28,7 +50,9 @@ OCR = RapidOCR()
 
 
 def extract(path: str) -> dict:
+    logger.info("Running OCR on %s", path)
     res, _ = OCR(path)
+    logger.debug("OCR returned %d text boxes", len(res))
 
     # --- stats ---------------------------------------------------------------
     nums = []
@@ -45,6 +69,9 @@ def extract(path: str) -> dict:
         row = [n for n in nums if abs(n[0] - first_y) < 30]
         row.sort(key=lambda n: n[1])
         stats_vals = [n[2] for n in row[:5]]
+        logger.debug("Detected stat numbers: %s", stats_vals)
+    else:
+        logger.warning("No stat numbers detected in %s", path)
 
     stats = dict(zip(["Speed", "Stamina", "Power", "Guts", "Wit"], stats_vals))
 
@@ -71,8 +98,12 @@ def extract(path: str) -> dict:
             if canonical not in seen:
                 seen.add(canonical)
                 skills.append(canonical)
+                logger.debug("Matched skill: %s", canonical)
 
     stats["Skills"] = "|".join(skills)
+    logger.info("Extracted stats %s with %d skills", stats, len(skills))
+    if not skills:
+        logger.warning("No skills matched in %s", path)
     return stats
 
 
@@ -82,6 +113,7 @@ def write_csv(rows, output):
         w = csv.DictWriter(f, fieldnames=fields)
         w.writeheader()
         w.writerows(rows)
+    logger.debug("Wrote %d rows to %s", len(rows), output)
 
 
 if __name__ == "__main__":
@@ -91,6 +123,7 @@ if __name__ == "__main__":
     img2_path = base_dir / img2_name
     output_path = base_dir / f"{Path(img1_name).stem}_{Path(img2_name).stem}.csv"
 
+    logger.info("Extracting data from %s and %s", img1_path, img2_path)
     rows = [extract(str(img1_path)), extract(str(img2_path))]
     write_csv(rows, output_path)
-    print("✅ CSV written to:", output_path)
+    logger.info("CSV written to %s", output_path)
