@@ -1,7 +1,10 @@
 """Generate a UmaLator simulator URL from OCR CSV data.
 
 This refactors the previous web form automation by generating a
-share link compatible with the local UmaLator UI.
+share link compatible with the local UmaLator UI. The script keeps a
+local server running and allows the user to supply multiple CSV files
+to quickly reload different character data without restarting the
+simulator.
 
 The share link format and default parameters are derived from the
 `serialize` function in the UmaLator project and the data structures
@@ -182,20 +185,44 @@ def main(argv: List[str]) -> int:
     if len(argv) != 2:
         print(f"Usage: {argv[0]} <csv>")
         return 1
+
     csv_path = Path(argv[1])
-    share_hash = csv_to_hash(csv_path)
+
+    # start the local simulator server once and keep it running
     httpd, thread, port = start_server()
-    url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
-    print(url)
+
     try:
-        webbrowser.open(url)
-    except Exception:
-        pass
-    try:
-        input("Press Enter to stop the local server...")
+        while True:
+            # build a share link for the provided CSV and open it
+            try:
+                share_hash = csv_to_hash(csv_path)
+            except Exception as exc:  # pragma: no cover - defensive
+                print(f"Failed to load '{csv_path}': {exc}")
+                share_hash = None
+
+            if share_hash:
+                url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
+                print(url)
+                try:
+                    webbrowser.open(url)
+                except Exception:
+                    pass
+
+            # prompt the user for a new CSV path
+            try:
+                new_csv = input(
+                    "Enter another CSV path to reload (or press Enter to quit): "
+                ).strip()
+            except EOFError:
+                new_csv = ""
+
+            if not new_csv:
+                break
+            csv_path = Path(new_csv)
     finally:
         httpd.shutdown()
         thread.join()
+
     return 0
 
 
