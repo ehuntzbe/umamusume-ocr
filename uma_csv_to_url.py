@@ -27,6 +27,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Dict
 
+from dotenv import load_dotenv
+
 REPO_URL_TOOLS = "https://github.com/alpha123/uma-tools"
 REPO_URL_SKILL_TOOLS = "https://github.com/alpha123/uma-skill-tools"
 
@@ -48,20 +50,9 @@ DEFAULT_RACEDEF = {
     "grade": 100,  # Grade.G1
 }
 
+load_dotenv(Path(__file__).with_name(".env"))
 
-def _env_flag(name: str) -> bool:
-    """Return True if `name=true` exists in a local .env file."""
-    env_path = Path(__file__).with_name(".env")
-    if env_path.exists():
-        with open(env_path, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith(f"{name}="):
-                    return line.split("=", 1)[1].strip().lower() == "true"
-    return False
-
-
-LOCAL_WEB_LOGGING = _env_flag("LOCAL_WEB_LOGGING")
+LOCAL_WEB_LOGGING = os.getenv("LOCAL_WEB_LOGGING", "").strip().lower() == "true"
 
 @dataclass
 class Horse:
