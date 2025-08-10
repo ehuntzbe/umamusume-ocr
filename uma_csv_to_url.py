@@ -56,6 +56,7 @@ LOCAL_WEB_LOGGING = os.getenv("LOCAL_WEB_LOGGING", "").strip().lower() == "true"
 
 @dataclass
 class Horse:
+    name: str
     speed: int
     stamina: int
     power: int
@@ -70,6 +71,7 @@ class Horse:
 
     def to_json(self) -> Dict:
         return {
+            "name": self.name,
             "outfitId": self.outfitId,
             "speed": self.speed,
             "stamina": self.stamina,
@@ -104,7 +106,7 @@ def load_skill_mapping() -> Dict[str, str]:
 
 
 def parse_horse(row: Dict[str, str], skill_map: Dict[str, str]) -> Horse:
-    skills = []
+    skills: List[str] = []
     for name in row.get("Skills", "").split("|"):
         key = name.strip().lower()
         if not key:
@@ -113,6 +115,7 @@ def parse_horse(row: Dict[str, str], skill_map: Dict[str, str]) -> Horse:
         if skill_id:
             skills.append(skill_id)
     return Horse(
+        name=row.get("Name", ""),
         speed=int(row.get("Speed", 0) or 0),
         stamina=int(row.get("Stamina", 0) or 0),
         power=int(row.get("Power", 0) or 0),
@@ -203,7 +206,7 @@ def main(argv: List[str]) -> int:
         summary = ", ".join(
             f"{k}:{row.get(k, '')}" for k in ["Speed", "Stamina", "Power", "Guts", "Wit"]
         )
-        print(f"{idx}: {summary}")
+        print(f"{idx}: {row.get('Name', '')} | {summary}")
 
     def select(prompt: str) -> int | None:
         value = input(prompt)
