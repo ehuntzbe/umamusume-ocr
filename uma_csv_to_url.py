@@ -210,7 +210,7 @@ def main(argv: List[str]) -> int:
         print(stats)
 
         skills = [s.strip() for s in row.get("Skills", "").split("|") if s.strip()]
-        col_width = 28
+        col_width = 40
         total_width = col_width * 2 + 5
         print("Skills".center(total_width, "-"))
         for i in range(0, len(skills), 2):
