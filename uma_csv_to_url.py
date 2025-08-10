@@ -20,7 +20,10 @@ import subprocess
 import sys
 import urllib.parse
 import webbrowser
-from dataclasses import dataclass, asdict
+import http.server
+import threading
+from functools import partial
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Dict
 
@@ -127,7 +130,8 @@ def build_share_hash(uma1: Horse, uma2: Horse) -> str:
     return urllib.parse.quote(base64.b64encode(zipped).decode("ascii"))
 
 
-def csv_to_url(csv_path: Path) -> str:
+def csv_to_hash(csv_path: Path) -> str:
+    """Return the encoded share hash for two rows of CSV data."""
     skill_map = load_skill_mapping()
     with open(csv_path, newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
@@ -135,10 +139,18 @@ def csv_to_url(csv_path: Path) -> str:
         raise ValueError("CSV must contain at least two rows")
     uma1 = parse_horse(rows[0], skill_map)
     uma2 = parse_horse(rows[1], skill_map)
-    share_hash = build_share_hash(uma1, uma2)
+    return build_share_hash(uma1, uma2)
+
+
+def start_server() -> tuple[http.server.ThreadingHTTPServer, threading.Thread, int]:
+    """Serve the uma-tools directory over HTTP and return server and port."""
     ensure_repo(REPO_URL_TOOLS, TOOLS_DIR)
-    index = (TOOLS_DIR / "umalator-global" / "index.html").resolve()
-    return index.as_uri() + "#" + share_hash
+
+    handler = partial(http.server.SimpleHTTPRequestHandler, directory=str(TOOLS_DIR))
+    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    return httpd, thread, httpd.server_port
 
 
 def main(argv: List[str]) -> int:
@@ -146,12 +158,19 @@ def main(argv: List[str]) -> int:
         print(f"Usage: {argv[0]} <csv>")
         return 1
     csv_path = Path(argv[1])
-    url = csv_to_url(csv_path)
+    share_hash = csv_to_hash(csv_path)
+    httpd, thread, port = start_server()
+    url = f"http://127.0.0.1:{port}/umalator-global/index.html#{share_hash}"
     print(url)
     try:
         webbrowser.open(url)
     except Exception:
         pass
+    try:
+        input("Press Enter to stop the local server...")
+    finally:
+        httpd.shutdown()
+        thread.join()
     return 0
 
 
