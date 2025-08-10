@@ -203,10 +203,21 @@ def main(argv: List[str]) -> int:
         return 1
 
     for idx, row in enumerate(runners, 1):
-        summary = ", ".join(
-            f"{k}:{row.get(k, '')}" for k in ["Speed", "Stamina", "Power", "Guts", "Wit"]
+        stats = ", ".join(
+            f"{k}: {row.get(k, '')}" for k in ["Speed", "Stamina", "Power", "Guts", "Wit"]
         )
-        print(f"{idx}: {row.get('Name', '')} | {summary}")
+        print(f"{idx}. {row.get('Name', '')}")
+        print(stats)
+
+        skills = [s.strip() for s in row.get("Skills", "").split("|") if s.strip()]
+        col_width = 40
+        total_width = col_width * 2 + 5
+        print("Skills".center(total_width, "-"))
+        for i in range(0, len(skills), 2):
+            left = skills[i]
+            right = skills[i + 1] if i + 1 < len(skills) else ""
+            print(f"| {left:<{col_width}}| {right:<{col_width}}|")
+        print("-" * total_width)
 
     def select(prompt: str) -> int | None:
         value = input(prompt)
