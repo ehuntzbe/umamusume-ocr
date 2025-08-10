@@ -48,6 +48,21 @@ DEFAULT_RACEDEF = {
     "grade": 100,  # Grade.G1
 }
 
+
+def _env_flag(name: str) -> bool:
+    """Return True if `name=true` exists in a local .env file."""
+    env_path = Path(__file__).with_name(".env")
+    if env_path.exists():
+        with open(env_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith(f"{name}="):
+                    return line.split("=", 1)[1].strip().lower() == "true"
+    return False
+
+
+LOCAL_WEB_LOGGING = _env_flag("LOCAL_WEB_LOGGING")
+
 @dataclass
 class Horse:
     speed: int
@@ -169,6 +184,10 @@ def start_server() -> tuple[http.server.ThreadingHTTPServer, threading.Thread, i
 
             return super().translate_path(path)
 
+        def log_message(self, format: str, *args: object) -> None:  # type: ignore[override]
+            if LOCAL_WEB_LOGGING:
+                super().log_message(format, *args)
+
     handler = partial(UmaToolsHandler, directory=str(serve_dir))
     httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
@@ -195,26 +214,51 @@ def main(argv: List[str]) -> int:
         )
         print(f"{idx}: {summary}")
 
-    try:
-        idx1 = int(input("Select runner 1: ")) - 1
-        idx2 = int(input("Select runner 2: ")) - 1
-    except ValueError:
-        print("Invalid selection")
-        return 1
-    if not (0 <= idx1 < len(runners)) or not (0 <= idx2 < len(runners)):
-        print("Selection out of range")
-        return 1
+    def select(prompt: str) -> int | None:
+        value = input(prompt)
+        if value.strip().lower() == "quit":
+            return None
+        try:
+            idx = int(value) - 1
+        except ValueError:
+            print("Invalid selection")
+            return select(prompt)
+        if not (0 <= idx < len(runners)):
+            print("Selection out of range")
+            return select(prompt)
+        return idx
 
-    share_hash = csv_to_hash([runners[idx1], runners[idx2]])
+    idx1 = select("Select runner 1: ")
+    if idx1 is None:
+        return 0
+    idx2 = select("Select runner 2: ")
+    if idx2 is None:
+        return 0
+
     httpd, thread, port = start_server()
-    url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
-    print(url)
     try:
-        webbrowser.open(url)
-    except Exception:
-        pass
-    try:
-        input("Press Enter to stop the local server...")
+        share_hash = csv_to_hash([runners[idx1], runners[idx2]])
+        url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
+        print(url)
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
+
+        while True:
+            idx1 = select("Select runner 1 (or 'quit'): ")
+            if idx1 is None:
+                break
+            idx2 = select("Select runner 2 (or 'quit'): ")
+            if idx2 is None:
+                break
+            share_hash = csv_to_hash([runners[idx1], runners[idx2]])
+            url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
+            print(url)
+            try:
+                webbrowser.open_new_tab(url)
+            except Exception:
+                pass
     finally:
         httpd.shutdown()
         thread.join()
