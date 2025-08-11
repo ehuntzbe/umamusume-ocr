@@ -15,6 +15,7 @@ import base64
 import csv
 import gzip
 import json
+import re
 import os
 import subprocess
 import sys
@@ -28,6 +29,7 @@ from pathlib import Path
 from typing import List, Dict
 
 from dotenv import load_dotenv
+from rapidfuzz import process, fuzz
 
 REPO_URL_TOOLS = "https://github.com/alpha123/uma-tools"
 REPO_URL_SKILL_TOOLS = "https://github.com/alpha123/uma-skill-tools"
@@ -105,6 +107,51 @@ def load_skill_mapping() -> Dict[str, str]:
     return mapping
 
 
+# --- normalization and uma lookup ------------------------------------------
+
+_CIRCLE_ALIASES = {
+    "o": "○",
+    "O": "○",
+    "0": "○",
+    "〇": "○",
+    "◎": "◎",
+    "○": "○",
+}
+
+
+def _normalize_circles(text: str) -> str:
+    return "".join(_CIRCLE_ALIASES.get(ch, ch) for ch in text)
+
+
+def _norm(s: str) -> str:
+    s = _normalize_circles(s)
+    return re.sub(r"[^a-z0-9◎○]", "", s.lower())
+
+
+def load_uma_lookup() -> tuple[Dict[str, str], Dict[str, Dict[str, str]]]:
+    """Return mappings for runner names and epithets."""
+    ensure_repo(REPO_URL_TOOLS, TOOLS_DIR)
+    uma_file = TOOLS_DIR / "umalator-global" / "umas.json"
+    with open(uma_file, encoding="utf-8") as f:
+        data = json.load(f)
+    name_map: Dict[str, str] = {}
+    outfit_map: Dict[str, Dict[str, str]] = {}
+    for v in data.values():
+        names = [n for n in v.get("name", []) if n]
+        if not names:
+            continue
+        canonical = names[-1]
+        name_map[_norm(canonical)] = canonical
+        epi_dict: Dict[str, str] = {}
+        for outfit_id, epithet in v.get("outfits", {}).items():
+            epi_dict[_norm(epithet)] = outfit_id
+        outfit_map[canonical] = epi_dict
+    return name_map, outfit_map
+
+
+UMA_NAME_MAP, UMA_OUTFIT_MAP = load_uma_lookup()
+
+
 def parse_horse(row: Dict[str, str], skill_map: Dict[str, str]) -> Horse:
     skills: List[str] = []
     for name in row.get("Skills", "").split("|"):
@@ -114,8 +161,24 @@ def parse_horse(row: Dict[str, str], skill_map: Dict[str, str]) -> Horse:
         skill_id = skill_map.get(key)
         if skill_id:
             skills.append(skill_id)
+    name_input = row.get("Name", "")
+    epithet_input = row.get("Epithet", "")
+    canonical_name = name_input
+    outfit_id = ""
+    if name_input:
+        key = _norm(name_input)
+        match = process.extractOne(key, UMA_NAME_MAP.keys(), scorer=fuzz.ratio)
+        if match:
+            canonical_name = UMA_NAME_MAP[match[0]]
+    ep_map = UMA_OUTFIT_MAP.get(canonical_name, {})
+    if epithet_input and ep_map:
+        key = _norm(epithet_input)
+        match = process.extractOne(key, ep_map.keys(), scorer=fuzz.ratio)
+        if match:
+            outfit_id = ep_map[match[0]]
     return Horse(
-        name=row.get("Name", ""),
+        name=canonical_name,
+        outfitId=outfit_id,
         speed=int(row.get("Speed", 0) or 0),
         stamina=int(row.get("Stamina", 0) or 0),
         power=int(row.get("Power", 0) or 0),
@@ -206,7 +269,8 @@ def main(argv: List[str]) -> int:
         stats = ", ".join(
             f"{k}: {row.get(k, '')}" for k in ["Speed", "Stamina", "Power", "Guts", "Wit"]
         )
-        print(f"{idx}. {row.get('Name', '')}")
+        title = f"{row.get('Epithet', '')} {row.get('Name', '')}".strip()
+        print(f"{idx}. {title}")
         print(stats)
 
         skills = [s.strip() for s in row.get("Skills", "").split("|") if s.strip()]
