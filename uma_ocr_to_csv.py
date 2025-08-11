@@ -7,6 +7,8 @@ from itertools import zip_longest
 from pathlib import Path
 
 import cv2
+import math
+import numpy as np
 from dotenv import load_dotenv
 from rapidocr_onnxruntime import RapidOCR
 from rapidfuzz import process, fuzz
@@ -103,9 +105,11 @@ _CIRCLE_ALIASES = {
     "○": "○",
 }
 
+
 def _normalize_circles(text: str) -> str:
     """Replace common lookalikes of the circle glyphs."""
     return "".join(_CIRCLE_ALIASES.get(ch, ch) for ch in text)
+
 
 def _norm(s: str) -> str:
     s = _normalize_circles(s)
