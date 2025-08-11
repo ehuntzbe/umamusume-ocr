@@ -11,5 +11,5 @@ Please review and comply with the licenses provided by those upstream projects (
 
 ## Code Generation
 
-Most of the source code in this repository was generated with the help of OpenAI's ChatGPT Codex and subsequently refined. The generated content has been reviewed to ensure alignment with the project's licensing obligations.
+Most of the source code in this repository was generated with the help of OpenAI's ChatGPT Codex and subsequently refined.
 
