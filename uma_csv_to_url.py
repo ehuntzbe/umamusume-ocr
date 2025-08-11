@@ -277,6 +277,17 @@ def run_gui(
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
+        def on_mousewheel(event: tk.Event) -> None:
+            canvas.yview_scroll(int(-event.delta / 120), "units")
+
+        def bind_wheel(widget: tk.Widget) -> None:
+            widget.bind("<Enter>", lambda _e: canvas.bind_all("<MouseWheel>", on_mousewheel))
+            widget.bind("<Leave>", lambda _e: canvas.unbind_all("<MouseWheel>"))
+            for child in widget.winfo_children():
+                bind_wheel(child)
+
+        bind_wheel(content)
+
         selected_idx: List[int | None] = [None]
         selected_frame: List[tk.Frame | None] = [None]
 
@@ -309,11 +320,25 @@ def run_gui(
                 anchor="w"
             )
 
-            stats = (
-                f"S {row.get('Speed', '')} St {row.get('Stamina', '')} "
-                f"P {row.get('Power', '')} G {row.get('Guts', '')} W {row.get('Wit', '')}"
-            )
-            tk.Label(item, text=stats, bg="white").pack(anchor="w")
+            stats_frame = tk.Frame(item, bg="white")
+            stats_frame.pack(anchor="w")
+            stat_values = [
+                ("Speed", row.get("Speed", "")),
+                ("Stamina", row.get("Stamina", "")),
+                ("Power", row.get("Power", "")),
+                ("Guts", row.get("Guts", "")),
+                ("Wisdom", row.get("Wit", "")),
+            ]
+            for j, (label, value) in enumerate(stat_values):
+                tk.Label(
+                    stats_frame,
+                    text=f"{label}:",
+                    font=("TkDefaultFont", 9, "bold"),
+                    bg="white",
+                ).grid(row=0, column=2 * j, sticky="w")
+                tk.Label(stats_frame, text=value, bg="white").grid(
+                    row=0, column=2 * j + 1, sticky="w", padx=(0, 8)
+                )
 
             skills = [s.strip() for s in row.get("Skills", "").split("|") if s.strip()]
             if skills:
