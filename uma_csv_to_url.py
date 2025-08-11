@@ -311,7 +311,7 @@ def main(argv: List[str]) -> int:
     try:
         share_hash = csv_to_hash([runners[idx1], runners[idx2]])
         url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
-        print(url)
+        print(f"Umalator is now open with runners #{idx1+1} and #{idx2+1}.")
         try:
             webbrowser.open(url)
         except Exception:
@@ -326,7 +326,7 @@ def main(argv: List[str]) -> int:
                 break
             share_hash = csv_to_hash([runners[idx1], runners[idx2]])
             url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
-            print(url)
+            print(f"Umalator is now open with runners #{idx1+1} and #{idx2+1}.")
             try:
                 webbrowser.open_new_tab(url)
             except Exception:
