@@ -28,6 +28,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Dict
 
+import tkinter as tk
+from tkinter import ttk
+
 from dotenv import load_dotenv
 from rapidfuzz import process, fuzz
 
@@ -255,6 +258,111 @@ def start_server() -> tuple[http.server.ThreadingHTTPServer, threading.Thread, i
     return httpd, thread, httpd.server_port
 
 
+def run_gui(
+    runners: List[Dict[str, str]],
+    httpd: http.server.ThreadingHTTPServer,
+    thread: threading.Thread,
+    port: int,
+) -> None:
+    """Display runner selection UI and handle browser launching."""
+
+    root = tk.Tk()
+    root.title("UmaLator Runner Selector")
+
+    def build_tree(parent: tk.Widget) -> ttk.Treeview:
+        columns = (
+            "name",
+            "speed",
+            "stamina",
+            "power",
+            "guts",
+            "wit",
+            "skills",
+        )
+        tree = ttk.Treeview(
+            parent, columns=columns, show="headings", selectmode="browse", height=15
+        )
+        headers = {
+            "name": "Name",
+            "speed": "Speed",
+            "stamina": "Stamina",
+            "power": "Power",
+            "guts": "Guts",
+            "wit": "Wit",
+            "skills": "Skills",
+        }
+        widths = {
+            "name": 180,
+            "speed": 60,
+            "stamina": 70,
+            "power": 60,
+            "guts": 60,
+            "wit": 60,
+            "skills": 200,
+        }
+        for col in columns:
+            tree.heading(col, text=headers[col])
+            tree.column(col, width=widths[col], anchor="w")
+        for idx, row in enumerate(runners):
+            title = f"{row.get('Epithet', '')} {row.get('Name', '')}".strip()
+            tree.insert(
+                "",
+                "end",
+                iid=str(idx),
+                values=(
+                    title,
+                    row.get("Speed", ""),
+                    row.get("Stamina", ""),
+                    row.get("Power", ""),
+                    row.get("Guts", ""),
+                    row.get("Wit", ""),
+                    row.get("Skills", ""),
+                ),
+            )
+        tree.pack(fill="both", expand=True)
+        return tree
+
+    left = ttk.Frame(root)
+    right = ttk.Frame(root)
+    left.pack(side="left", fill="both", expand=True, padx=5, pady=5)
+    right.pack(side="left", fill="both", expand=True, padx=5, pady=5)
+
+    ttk.Label(left, text="Runner 1").pack()
+    tree1 = build_tree(left)
+    ttk.Label(right, text="Runner 2").pack()
+    tree2 = build_tree(right)
+
+    def open_selected() -> None:
+        sel1 = tree1.selection()
+        sel2 = tree2.selection()
+        if not sel1 or not sel2:
+            return
+        idx1 = int(sel1[0])
+        idx2 = int(sel2[0])
+        share_hash = csv_to_hash([runners[idx1], runners[idx2]])
+        url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
+        try:
+            webbrowser.open_new_tab(url)
+        except Exception:
+            pass
+
+    ttk.Button(root, text="Open in UmaLator", command=open_selected).pack(pady=5)
+
+    def on_close() -> None:
+        httpd.shutdown()
+        root.destroy()
+
+    def poll_server() -> None:
+        if not thread.is_alive():
+            root.destroy()
+        else:
+            root.after(1000, poll_server)
+
+    root.protocol("WM_DELETE_WINDOW", on_close)
+    root.after(1000, poll_server)
+    root.mainloop()
+
+
 def main(argv: List[str]) -> int:
     data_dir = Path(__file__).with_name("data")
     csv_path = data_dir / "runners.csv"
@@ -268,69 +376,9 @@ def main(argv: List[str]) -> int:
         print("Need at least two runners to compare")
         return 1
 
-    for idx, row in enumerate(runners, 1):
-        stats = ", ".join(
-            f"{k}: {row.get(k, '')}" for k in ["Speed", "Stamina", "Power", "Guts", "Wit"]
-        )
-        title = f"{row.get('Epithet', '')} {row.get('Name', '')}".strip()
-        print(f"{idx}. {title}")
-        print(stats)
-
-        skills = [s.strip() for s in row.get("Skills", "").split("|") if s.strip()]
-        col_width = 40
-        total_width = col_width * 2 + 5
-        print("Skills".center(total_width, "-"))
-        for i in range(0, len(skills), 2):
-            left = skills[i]
-            right = skills[i + 1] if i + 1 < len(skills) else ""
-            print(f"| {left:<{col_width}}| {right:<{col_width}}|")
-        print("-" * total_width)
-
-    def select(prompt: str) -> int | None:
-        value = input(prompt)
-        if value.strip().lower() == "quit":
-            return None
-        try:
-            idx = int(value) - 1
-        except ValueError:
-            print("Invalid selection")
-            return select(prompt)
-        if not (0 <= idx < len(runners)):
-            print("Selection out of range")
-            return select(prompt)
-        return idx
-
-    idx1 = select("Select runner 1: ")
-    if idx1 is None:
-        return 0
-    idx2 = select("Select runner 2: ")
-    if idx2 is None:
-        return 0
-
     httpd, thread, port = start_server()
     try:
-        share_hash = csv_to_hash([runners[idx1], runners[idx2]])
-        url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
-        print(f"Umalator is now open with runners #{idx1+1} and #{idx2+1}.")
-        try:
-            webbrowser.open(url)
-        except Exception:
-            pass
-
-        while True:
-            idx1 = select("Select runner 1 (or 'quit'): ")
-            if idx1 is None:
-                break
-            idx2 = select("Select runner 2 (or 'quit'): ")
-            if idx2 is None:
-                break
-            share_hash = csv_to_hash([runners[idx1], runners[idx2]])
-            url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
-            print(f"Umalator is now open with runners #{idx1+1} and #{idx2+1}.")
-            try:
-                webbrowser.open_new_tab(url)
-            except Exception:
-                pass
+        run_gui(runners, httpd, thread, port)
     finally:
         httpd.shutdown()
         thread.join()
