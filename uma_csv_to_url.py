@@ -278,15 +278,14 @@ def run_gui(
         scrollbar.pack(side="right", fill="y")
 
         def on_mousewheel(event: tk.Event) -> None:
-            canvas.yview_scroll(int(-event.delta / 120), "units")
+            widget = event.widget
+            while widget:
+                if widget == canvas:
+                    canvas.yview_scroll(int(-event.delta / 120), "units")
+                    break
+                widget = widget.master
 
-        def bind_wheel(widget: tk.Widget) -> None:
-            widget.bind("<Enter>", lambda _e: canvas.bind_all("<MouseWheel>", on_mousewheel))
-            widget.bind("<Leave>", lambda _e: canvas.unbind_all("<MouseWheel>"))
-            for child in widget.winfo_children():
-                bind_wheel(child)
-
-        bind_wheel(content)
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
 
         selected_idx: List[int | None] = [None]
         selected_frame: List[tk.Frame | None] = [None]
@@ -358,6 +357,7 @@ def run_gui(
 
     root = tk.Tk()
     root.title("UmaLator Runner Selector")
+    root.geometry("900x600")
     root.rowconfigure(0, weight=1)
     root.columnconfigure(0, weight=1)
     root.columnconfigure(1, weight=1)
