@@ -255,6 +255,104 @@ def start_server() -> tuple[http.server.ThreadingHTTPServer, threading.Thread, i
     return httpd, thread, httpd.server_port
 
 
+def launch_gui(
+    runners: List[Dict[str, str]],
+    httpd: http.server.ThreadingHTTPServer,
+    thread: threading.Thread,
+    port: int,
+) -> None:
+    """Display a runner selection GUI and handle user interaction."""
+
+    import tkinter as tk
+    from tkinter import ttk, messagebox
+
+    root = tk.Tk()
+    root.title("UmaLator Runner Selector")
+
+    columns = ("Runner", "Speed", "Stamina", "Power", "Guts", "Wit", "Skills")
+
+    def setup_tree(parent: tk.Misc, label: str) -> ttk.Treeview:
+        frame = ttk.Frame(parent)
+        frame.grid_columnconfigure(0, weight=1)
+        frame.grid_rowconfigure(1, weight=1)
+        ttk.Label(frame, text=label).grid(row=0, column=0, sticky="w")
+        tree = ttk.Treeview(frame, columns=columns, show="headings", selectmode="browse")
+        tree.grid(row=1, column=0, sticky="nsew")
+        vsb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+        vsb.grid(row=1, column=1, sticky="ns")
+        hsb = ttk.Scrollbar(frame, orient="horizontal", command=tree.xview)
+        hsb.grid(row=2, column=0, sticky="ew")
+        tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        for col in columns:
+            tree.heading(col, text=col)
+        tree.column("Runner", width=200, anchor="w")
+        for col in ("Speed", "Stamina", "Power", "Guts", "Wit"):
+            tree.column(col, width=60, anchor="center")
+        tree.column("Skills", width=300, anchor="w")
+        return tree
+
+    root.grid_columnconfigure(0, weight=1)
+    root.grid_columnconfigure(1, weight=1)
+    root.grid_rowconfigure(0, weight=1)
+
+    tree_left = setup_tree(root, "Runner 1")
+    tree_left.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+    tree_right = setup_tree(root, "Runner 2")
+    tree_right.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
+
+    def runner_values(row: Dict[str, str]) -> List[str]:
+        title = f"{row.get('Epithet', '')} {row.get('Name', '')}".strip()
+        skills = [s.strip() for s in row.get("Skills", "").split("|") if s.strip()]
+        skill_text = ", ".join(skills)
+        return [
+            title,
+            row.get("Speed", ""),
+            row.get("Stamina", ""),
+            row.get("Power", ""),
+            row.get("Guts", ""),
+            row.get("Wit", ""),
+            skill_text,
+        ]
+
+    for idx, row in enumerate(runners):
+        values = runner_values(row)
+        tree_left.insert("", "end", iid=str(idx), values=values)
+        tree_right.insert("", "end", iid=str(idx), values=values)
+
+    def on_submit() -> None:
+        sel1 = tree_left.selection()
+        sel2 = tree_right.selection()
+        if not sel1 or not sel2:
+            messagebox.showerror("Selection Error", "Please select two runners.")
+            return
+        idx1 = int(sel1[0])
+        idx2 = int(sel2[0])
+        share_hash = csv_to_hash([runners[idx1], runners[idx2]])
+        url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
+        print(f"Umalator is now open with runners #{idx1+1} and #{idx2+1}.")
+        try:
+            webbrowser.open_new_tab(url)
+        except Exception:
+            pass
+
+    btn = ttk.Button(root, text="Open in UmaLator", command=on_submit)
+    btn.grid(row=1, column=0, columnspan=2, pady=5)
+
+    def on_close() -> None:
+        root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", on_close)
+
+    def check_server() -> None:
+        if not thread.is_alive():
+            root.destroy()
+        else:
+            root.after(1000, check_server)
+
+    root.after(1000, check_server)
+    root.mainloop()
+
+
 def main(argv: List[str]) -> int:
     data_dir = Path(__file__).with_name("data")
     csv_path = data_dir / "runners.csv"
@@ -268,69 +366,9 @@ def main(argv: List[str]) -> int:
         print("Need at least two runners to compare")
         return 1
 
-    for idx, row in enumerate(runners, 1):
-        stats = ", ".join(
-            f"{k}: {row.get(k, '')}" for k in ["Speed", "Stamina", "Power", "Guts", "Wit"]
-        )
-        title = f"{row.get('Epithet', '')} {row.get('Name', '')}".strip()
-        print(f"{idx}. {title}")
-        print(stats)
-
-        skills = [s.strip() for s in row.get("Skills", "").split("|") if s.strip()]
-        col_width = 40
-        total_width = col_width * 2 + 5
-        print("Skills".center(total_width, "-"))
-        for i in range(0, len(skills), 2):
-            left = skills[i]
-            right = skills[i + 1] if i + 1 < len(skills) else ""
-            print(f"| {left:<{col_width}}| {right:<{col_width}}|")
-        print("-" * total_width)
-
-    def select(prompt: str) -> int | None:
-        value = input(prompt)
-        if value.strip().lower() == "quit":
-            return None
-        try:
-            idx = int(value) - 1
-        except ValueError:
-            print("Invalid selection")
-            return select(prompt)
-        if not (0 <= idx < len(runners)):
-            print("Selection out of range")
-            return select(prompt)
-        return idx
-
-    idx1 = select("Select runner 1: ")
-    if idx1 is None:
-        return 0
-    idx2 = select("Select runner 2: ")
-    if idx2 is None:
-        return 0
-
     httpd, thread, port = start_server()
     try:
-        share_hash = csv_to_hash([runners[idx1], runners[idx2]])
-        url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
-        print(f"Umalator is now open with runners #{idx1+1} and #{idx2+1}.")
-        try:
-            webbrowser.open(url)
-        except Exception:
-            pass
-
-        while True:
-            idx1 = select("Select runner 1 (or 'quit'): ")
-            if idx1 is None:
-                break
-            idx2 = select("Select runner 2 (or 'quit'): ")
-            if idx2 is None:
-                break
-            share_hash = csv_to_hash([runners[idx1], runners[idx2]])
-            url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
-            print(f"Umalator is now open with runners #{idx1+1} and #{idx2+1}.")
-            try:
-                webbrowser.open_new_tab(url)
-            except Exception:
-                pass
+        launch_gui(runners, httpd, thread, port)
     finally:
         httpd.shutdown()
         thread.join()
