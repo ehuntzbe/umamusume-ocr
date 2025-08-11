@@ -26,7 +26,9 @@ import threading
 from functools import partial
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Callable
+import tkinter as tk
+from tkinter import ttk
 
 from dotenv import load_dotenv
 from rapidfuzz import process, fuzz
@@ -255,6 +257,151 @@ def start_server() -> tuple[http.server.ThreadingHTTPServer, threading.Thread, i
     return httpd, thread, httpd.server_port
 
 
+def run_gui(
+    runners: List[Dict[str, str]],
+    httpd: http.server.ThreadingHTTPServer,
+    thread: threading.Thread,
+    port: int,
+) -> None:
+    """Display runner selection GUI and handle browser launching."""
+
+    def make_column(parent: tk.Widget) -> Callable[[], int | None]:
+        canvas = tk.Canvas(parent, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        content = ttk.Frame(canvas)
+        content.bind(
+            "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        canvas.create_window((0, 0), window=content, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        def on_mousewheel(event: tk.Event) -> None:
+            widget = event.widget
+            while widget:
+                if widget == canvas:
+                    canvas.yview_scroll(int(-event.delta / 120), "units")
+                    break
+                widget = widget.master
+
+        canvas.bind_all("<MouseWheel>", on_mousewheel, add="+")
+
+        selected_idx: List[int | None] = [None]
+        selected_frame: List[tk.Frame | None] = [None]
+
+        def set_bg(widget: tk.Widget, color: str) -> None:
+            try:
+                widget.configure(background=color)
+            except tk.TclError:
+                return
+            for child in widget.winfo_children():
+                set_bg(child, color)
+
+        def select(idx: int, frame: tk.Frame) -> None:
+            if selected_frame[0] is not None:
+                set_bg(selected_frame[0], "white")
+            selected_idx[0] = idx
+            selected_frame[0] = frame
+            set_bg(frame, "#cce5ff")
+
+        def bind_select(widget: tk.Widget, idx: int, frame: tk.Frame) -> None:
+            widget.bind("<Button-1>", lambda _e: select(idx, frame))
+            for child in widget.winfo_children():
+                bind_select(child, idx, frame)
+
+        for i, row in enumerate(runners):
+            item = tk.Frame(content, bd=1, relief="solid", padx=4, pady=2, background="white")
+            item.pack(fill="x", pady=2)
+
+            name = f"{row.get('Epithet', '')} {row.get('Name', '')}".strip()
+            tk.Label(item, text=name, font=("TkDefaultFont", 10, "bold"), bg="white").pack(
+                anchor="w"
+            )
+
+            stats_frame = tk.Frame(item, bg="white")
+            stats_frame.pack(anchor="w")
+            stat_values = [
+                ("Speed", row.get("Speed", "")),
+                ("Stamina", row.get("Stamina", "")),
+                ("Power", row.get("Power", "")),
+                ("Guts", row.get("Guts", "")),
+                ("Wisdom", row.get("Wit", "")),
+            ]
+            for j, (label, value) in enumerate(stat_values):
+                tk.Label(
+                    stats_frame,
+                    text=f"{label}:",
+                    font=("TkDefaultFont", 9, "bold"),
+                    bg="white",
+                ).grid(row=0, column=2 * j, sticky="w")
+                tk.Label(stats_frame, text=value, bg="white").grid(
+                    row=0, column=2 * j + 1, sticky="w", padx=(0, 8)
+                )
+
+            skills = [s.strip() for s in row.get("Skills", "").split("|") if s.strip()]
+            if skills:
+                skill_frame = tk.Frame(item, bg="white")
+                skill_frame.pack(anchor="w")
+                for j, skill in enumerate(skills):
+                    tk.Label(skill_frame, text=skill, bg="white").grid(
+                        row=j // 2, column=j % 2, sticky="w"
+                    )
+
+            bind_select(item, i, item)
+
+        def get_selected() -> int | None:
+            return selected_idx[0]
+
+        return get_selected
+
+    root = tk.Tk()
+    root.title("UmaLator Runner Selector")
+    root.geometry("900x600")
+    root.rowconfigure(0, weight=1)
+    root.columnconfigure(0, weight=1)
+    root.columnconfigure(1, weight=1)
+
+    left = ttk.Frame(root)
+    right = ttk.Frame(root)
+    left.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+    right.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
+
+    get_left = make_column(left)
+    get_right = make_column(right)
+
+    def open_selected() -> None:
+        idx1 = get_left()
+        idx2 = get_right()
+        if idx1 is None or idx2 is None:
+            return
+        share_hash = csv_to_hash([runners[int(idx1)], runners[int(idx2)]])
+        url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
+        try:
+            webbrowser.open_new_tab(url)
+        except Exception:
+            pass
+
+    button = ttk.Button(root, text="Open UmaLator", command=open_selected)
+    button.grid(row=1, column=0, columnspan=2, pady=5)
+
+    def on_close() -> None:
+        httpd.shutdown()
+        thread.join()
+        root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", on_close)
+
+    def check_server() -> None:
+        if not thread.is_alive():
+            root.destroy()
+        else:
+            root.after(1000, check_server)
+
+    root.after(1000, check_server)
+    root.mainloop()
+
+
 def main(argv: List[str]) -> int:
     data_dir = Path(__file__).with_name("data")
     csv_path = data_dir / "runners.csv"
@@ -268,72 +415,8 @@ def main(argv: List[str]) -> int:
         print("Need at least two runners to compare")
         return 1
 
-    for idx, row in enumerate(runners, 1):
-        stats = ", ".join(
-            f"{k}: {row.get(k, '')}" for k in ["Speed", "Stamina", "Power", "Guts", "Wit"]
-        )
-        title = f"{row.get('Epithet', '')} {row.get('Name', '')}".strip()
-        print(f"{idx}. {title}")
-        print(stats)
-
-        skills = [s.strip() for s in row.get("Skills", "").split("|") if s.strip()]
-        col_width = 40
-        total_width = col_width * 2 + 5
-        print("Skills".center(total_width, "-"))
-        for i in range(0, len(skills), 2):
-            left = skills[i]
-            right = skills[i + 1] if i + 1 < len(skills) else ""
-            print(f"| {left:<{col_width}}| {right:<{col_width}}|")
-        print("-" * total_width)
-
-    def select(prompt: str) -> int | None:
-        value = input(prompt)
-        if value.strip().lower() == "quit":
-            return None
-        try:
-            idx = int(value) - 1
-        except ValueError:
-            print("Invalid selection")
-            return select(prompt)
-        if not (0 <= idx < len(runners)):
-            print("Selection out of range")
-            return select(prompt)
-        return idx
-
-    idx1 = select("Select runner 1: ")
-    if idx1 is None:
-        return 0
-    idx2 = select("Select runner 2: ")
-    if idx2 is None:
-        return 0
-
     httpd, thread, port = start_server()
-    try:
-        share_hash = csv_to_hash([runners[idx1], runners[idx2]])
-        url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
-        print(f"Umalator is now open with runners #{idx1+1} and #{idx2+1}.")
-        try:
-            webbrowser.open(url)
-        except Exception:
-            pass
-
-        while True:
-            idx1 = select("Select runner 1 (or 'quit'): ")
-            if idx1 is None:
-                break
-            idx2 = select("Select runner 2 (or 'quit'): ")
-            if idx2 is None:
-                break
-            share_hash = csv_to_hash([runners[idx1], runners[idx2]])
-            url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
-            print(f"Umalator is now open with runners #{idx1+1} and #{idx2+1}.")
-            try:
-                webbrowser.open_new_tab(url)
-            except Exception:
-                pass
-    finally:
-        httpd.shutdown()
-        thread.join()
+    run_gui(runners, httpd, thread, port)
     return 0
 
 
