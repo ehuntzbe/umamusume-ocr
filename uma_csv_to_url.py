@@ -100,32 +100,23 @@ def load_skill_mapping() -> Dict[str, str]:
     skill_file = TOOLS_DIR / "umalator-global" / "skillnames.json"
     with open(skill_file, encoding="utf-8") as f:
         data = json.load(f)
-    mapping = {}
+    mapping: Dict[str, str] = {}
     for skill_id, names in data.items():
         for name in names:
-            mapping[name.lower()] = skill_id
+            key = name.lower()
+            existing = mapping.get(key)
+            if existing is None or (
+                not existing.startswith("9") and skill_id.startswith("9")
+            ):
+                mapping[key] = skill_id
     return mapping
 
 
 # --- normalization and uma lookup ------------------------------------------
 
-_CIRCLE_ALIASES = {
-    "o": "○",
-    "O": "○",
-    "0": "○",
-    "〇": "○",
-    "◎": "◎",
-    "○": "○",
-}
-
-
-def _normalize_circles(text: str) -> str:
-    return "".join(_CIRCLE_ALIASES.get(ch, ch) for ch in text)
-
 
 def _norm(s: str) -> str:
-    s = _normalize_circles(s)
-    return re.sub(r"[^a-z0-9◎○]", "", s.lower())
+    return re.sub(r"[^a-z0-9]", "", s.lower())
 
 
 def load_uma_lookup() -> tuple[Dict[str, str], Dict[str, Dict[str, str]]]:
