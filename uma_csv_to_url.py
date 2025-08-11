@@ -237,7 +237,19 @@ def start_server() -> tuple[http.server.ThreadingHTTPServer, threading.Thread, i
                 super().log_message(format, *args)
 
     handler = partial(UmaToolsHandler, directory=str(serve_dir))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+
+    class QuietServer(http.server.ThreadingHTTPServer):
+        """HTTP server that suppresses common connection errors."""
+
+        daemon_threads = True
+
+        def handle_error(self, request, client_address):  # type: ignore[override]
+            exc = sys.exc_info()[1]
+            if isinstance(exc, ConnectionError):
+                return
+            super().handle_error(request, client_address)
+
+    httpd = QuietServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     return httpd, thread, httpd.server_port
