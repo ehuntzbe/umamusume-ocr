@@ -26,7 +26,7 @@ import threading
 from functools import partial
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Callable
 import tkinter as tk
 from tkinter import ttk
 
@@ -265,16 +265,71 @@ def run_gui(
 ) -> None:
     """Display runner selection GUI and handle browser launching."""
 
-    columns = [
-        "Name",
-        "Epithet",
-        "Speed",
-        "Stamina",
-        "Power",
-        "Guts",
-        "Wit",
-        "Skills",
-    ]
+    def make_column(parent: tk.Widget) -> Callable[[], int | None]:
+        canvas = tk.Canvas(parent, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        content = ttk.Frame(canvas)
+        content.bind(
+            "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        canvas.create_window((0, 0), window=content, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        selected_idx: List[int | None] = [None]
+        selected_frame: List[tk.Frame | None] = [None]
+
+        def set_bg(widget: tk.Widget, color: str) -> None:
+            try:
+                widget.configure(background=color)
+            except tk.TclError:
+                return
+            for child in widget.winfo_children():
+                set_bg(child, color)
+
+        def select(idx: int, frame: tk.Frame) -> None:
+            if selected_frame[0] is not None:
+                set_bg(selected_frame[0], "white")
+            selected_idx[0] = idx
+            selected_frame[0] = frame
+            set_bg(frame, "#cce5ff")
+
+        def bind_select(widget: tk.Widget, idx: int, frame: tk.Frame) -> None:
+            widget.bind("<Button-1>", lambda _e: select(idx, frame))
+            for child in widget.winfo_children():
+                bind_select(child, idx, frame)
+
+        for i, row in enumerate(runners):
+            item = tk.Frame(content, bd=1, relief="solid", padx=4, pady=2, background="white")
+            item.pack(fill="x", pady=2)
+
+            name = f"{row.get('Epithet', '')} {row.get('Name', '')}".strip()
+            tk.Label(item, text=name, font=("TkDefaultFont", 10, "bold"), bg="white").pack(
+                anchor="w"
+            )
+
+            stats = (
+                f"S {row.get('Speed', '')} St {row.get('Stamina', '')} "
+                f"P {row.get('Power', '')} G {row.get('Guts', '')} W {row.get('Wit', '')}"
+            )
+            tk.Label(item, text=stats, bg="white").pack(anchor="w")
+
+            skills = [s.strip() for s in row.get("Skills", "").split("|") if s.strip()]
+            if skills:
+                skill_frame = tk.Frame(item, bg="white")
+                skill_frame.pack(anchor="w")
+                for j, skill in enumerate(skills):
+                    tk.Label(skill_frame, text=skill, bg="white").grid(
+                        row=j // 2, column=j % 2, sticky="w"
+                    )
+
+            bind_select(item, i, item)
+
+        def get_selected() -> int | None:
+            return selected_idx[0]
+
+        return get_selected
 
     root = tk.Tk()
     root.title("UmaLator Runner Selector")
@@ -287,37 +342,15 @@ def run_gui(
     left.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
     right.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
 
-    tree1 = ttk.Treeview(left, columns=columns, show="headings", selectmode="browse")
-    tree2 = ttk.Treeview(right, columns=columns, show="headings", selectmode="browse")
-
-    for tree in (tree1, tree2):
-        for col in columns:
-            tree.heading(col, text=col)
-            tree.column(col, width=80, anchor="w")
-
-    for i, row in enumerate(runners):
-        values = [row.get(col, "") for col in columns]
-        tree1.insert("", "end", iid=str(i), values=values)
-        tree2.insert("", "end", iid=str(i), values=values)
-
-    scroll1 = ttk.Scrollbar(left, orient="vertical", command=tree1.yview)
-    scroll1.pack(side="right", fill="y")
-    tree1.configure(yscrollcommand=scroll1.set)
-    tree1.pack(side="left", fill="both", expand=True)
-
-    scroll2 = ttk.Scrollbar(right, orient="vertical", command=tree2.yview)
-    scroll2.pack(side="right", fill="y")
-    tree2.configure(yscrollcommand=scroll2.set)
-    tree2.pack(side="left", fill="both", expand=True)
+    get_left = make_column(left)
+    get_right = make_column(right)
 
     def open_selected() -> None:
-        sel1 = tree1.selection()
-        sel2 = tree2.selection()
-        if not sel1 or not sel2:
+        idx1 = get_left()
+        idx2 = get_right()
+        if idx1 is None or idx2 is None:
             return
-        idx1 = int(sel1[0])
-        idx2 = int(sel2[0])
-        share_hash = csv_to_hash([runners[idx1], runners[idx2]])
+        share_hash = csv_to_hash([runners[int(idx1)], runners[int(idx2)]])
         url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
         try:
             webbrowser.open_new_tab(url)
