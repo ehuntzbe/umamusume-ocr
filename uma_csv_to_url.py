@@ -285,7 +285,7 @@ def run_gui(
                     break
                 widget = widget.master
 
-        canvas.bind_all("<MouseWheel>", on_mousewheel)
+        canvas.bind_all("<MouseWheel>", on_mousewheel, add="+")
 
         selected_idx: List[int | None] = [None]
         selected_frame: List[tk.Frame | None] = [None]
