@@ -106,7 +106,7 @@ def load_skill_mapping() -> Dict[str, str]:
             key = name.lower()
             existing = mapping.get(key)
             if existing is None or (
-                not existing.startswith("9") and skill_id.startswith("9")
+                existing.startswith("9") and not skill_id.startswith("9")
             ):
                 mapping[key] = skill_id
     return mapping
