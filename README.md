@@ -79,7 +79,7 @@ The scripts read configuration from `.env` in the project root. Available settin
    python uma_csv_to_url.py
    ```
 
-    A GUI lists the runners in `data/runners.csv`. Select two entries and the tool opens your browser to a locally served copy of UmaLator preloaded with those runners. Copy the portion of the URL after `index.html` to share or append to the public instance at https://alpha123.github.io/uma-tools/umalator-global/index.html as long as both versions remain in sync.
+    A GUI lists the runners in `data/runners.csv`. Select two entries and the tool opens your browser to a locally served copy of UmaLator preloaded with those runners. Copy the portion of the URL after `index.html` to share or append to the public instance at https://alpha123.github.io/uma-tools/umalator-global/ as long as both versions remain in sync.
 
 ### GUI alternative
 
