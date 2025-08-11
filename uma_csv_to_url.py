@@ -27,6 +27,8 @@ from functools import partial
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Dict
+import tkinter as tk
+from tkinter import ttk
 
 from dotenv import load_dotenv
 from rapidfuzz import process, fuzz
@@ -255,6 +257,93 @@ def start_server() -> tuple[http.server.ThreadingHTTPServer, threading.Thread, i
     return httpd, thread, httpd.server_port
 
 
+def run_gui(
+    runners: List[Dict[str, str]],
+    httpd: http.server.ThreadingHTTPServer,
+    thread: threading.Thread,
+    port: int,
+) -> None:
+    """Display runner selection GUI and handle browser launching."""
+
+    columns = [
+        "Name",
+        "Epithet",
+        "Speed",
+        "Stamina",
+        "Power",
+        "Guts",
+        "Wit",
+        "Skills",
+    ]
+
+    root = tk.Tk()
+    root.title("UmaLator Runner Selector")
+    root.rowconfigure(0, weight=1)
+    root.columnconfigure(0, weight=1)
+    root.columnconfigure(1, weight=1)
+
+    left = ttk.Frame(root)
+    right = ttk.Frame(root)
+    left.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+    right.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
+
+    tree1 = ttk.Treeview(left, columns=columns, show="headings", selectmode="browse")
+    tree2 = ttk.Treeview(right, columns=columns, show="headings", selectmode="browse")
+
+    for tree in (tree1, tree2):
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=80, anchor="w")
+
+    for i, row in enumerate(runners):
+        values = [row.get(col, "") for col in columns]
+        tree1.insert("", "end", iid=str(i), values=values)
+        tree2.insert("", "end", iid=str(i), values=values)
+
+    scroll1 = ttk.Scrollbar(left, orient="vertical", command=tree1.yview)
+    scroll1.pack(side="right", fill="y")
+    tree1.configure(yscrollcommand=scroll1.set)
+    tree1.pack(side="left", fill="both", expand=True)
+
+    scroll2 = ttk.Scrollbar(right, orient="vertical", command=tree2.yview)
+    scroll2.pack(side="right", fill="y")
+    tree2.configure(yscrollcommand=scroll2.set)
+    tree2.pack(side="left", fill="both", expand=True)
+
+    def open_selected() -> None:
+        sel1 = tree1.selection()
+        sel2 = tree2.selection()
+        if not sel1 or not sel2:
+            return
+        idx1 = int(sel1[0])
+        idx2 = int(sel2[0])
+        share_hash = csv_to_hash([runners[idx1], runners[idx2]])
+        url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
+        try:
+            webbrowser.open_new_tab(url)
+        except Exception:
+            pass
+
+    button = ttk.Button(root, text="Open UmaLator", command=open_selected)
+    button.grid(row=1, column=0, columnspan=2, pady=5)
+
+    def on_close() -> None:
+        httpd.shutdown()
+        thread.join()
+        root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", on_close)
+
+    def check_server() -> None:
+        if not thread.is_alive():
+            root.destroy()
+        else:
+            root.after(1000, check_server)
+
+    root.after(1000, check_server)
+    root.mainloop()
+
+
 def main(argv: List[str]) -> int:
     data_dir = Path(__file__).with_name("data")
     csv_path = data_dir / "runners.csv"
@@ -268,72 +357,8 @@ def main(argv: List[str]) -> int:
         print("Need at least two runners to compare")
         return 1
 
-    for idx, row in enumerate(runners, 1):
-        stats = ", ".join(
-            f"{k}: {row.get(k, '')}" for k in ["Speed", "Stamina", "Power", "Guts", "Wit"]
-        )
-        title = f"{row.get('Epithet', '')} {row.get('Name', '')}".strip()
-        print(f"{idx}. {title}")
-        print(stats)
-
-        skills = [s.strip() for s in row.get("Skills", "").split("|") if s.strip()]
-        col_width = 40
-        total_width = col_width * 2 + 5
-        print("Skills".center(total_width, "-"))
-        for i in range(0, len(skills), 2):
-            left = skills[i]
-            right = skills[i + 1] if i + 1 < len(skills) else ""
-            print(f"| {left:<{col_width}}| {right:<{col_width}}|")
-        print("-" * total_width)
-
-    def select(prompt: str) -> int | None:
-        value = input(prompt)
-        if value.strip().lower() == "quit":
-            return None
-        try:
-            idx = int(value) - 1
-        except ValueError:
-            print("Invalid selection")
-            return select(prompt)
-        if not (0 <= idx < len(runners)):
-            print("Selection out of range")
-            return select(prompt)
-        return idx
-
-    idx1 = select("Select runner 1: ")
-    if idx1 is None:
-        return 0
-    idx2 = select("Select runner 2: ")
-    if idx2 is None:
-        return 0
-
     httpd, thread, port = start_server()
-    try:
-        share_hash = csv_to_hash([runners[idx1], runners[idx2]])
-        url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
-        print(f"Umalator is now open with runners #{idx1+1} and #{idx2+1}.")
-        try:
-            webbrowser.open(url)
-        except Exception:
-            pass
-
-        while True:
-            idx1 = select("Select runner 1 (or 'quit'): ")
-            if idx1 is None:
-                break
-            idx2 = select("Select runner 2 (or 'quit'): ")
-            if idx2 is None:
-                break
-            share_hash = csv_to_hash([runners[idx1], runners[idx2]])
-            url = f"http://127.0.0.1:{port}/index.html#{share_hash}"
-            print(f"Umalator is now open with runners #{idx1+1} and #{idx2+1}.")
-            try:
-                webbrowser.open_new_tab(url)
-            except Exception:
-                pass
-    finally:
-        httpd.shutdown()
-        thread.join()
+    run_gui(runners, httpd, thread, port)
     return 0
 
 
