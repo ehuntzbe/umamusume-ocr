@@ -92,13 +92,24 @@ def _load_epithets() -> list[str]:
 
 CANONICAL_EPITHETS = _load_epithets()
 
-
-
 # --- normalization ---------------------------------------------------------
 
+_CIRCLE_ALIASES = {
+    "o": "○",
+    "O": "○",
+    "0": "○",
+    "〇": "○",
+    "◎": "◎",
+    "○": "○",
+}
+
+def _normalize_circles(text: str) -> str:
+    """Replace common lookalikes of the circle glyphs."""
+    return "".join(_CIRCLE_ALIASES.get(ch, ch) for ch in text)
 
 def _norm(s: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", s.lower())
+    s = _normalize_circles(s)
+    return re.sub(r"[^a-z0-9◎○]", "", s.lower())
 
 
 CANONICAL_MAP = {_norm(name): name for name in CANONICAL_SKILLS}
@@ -149,6 +160,33 @@ def _group_skills(res):
     return groups
 
 
+def _detect_circle(img, rect):
+    x0, y0, x1, y1 = map(int, rect)
+    margin = 5
+    xs = max(0, x1 - 50)
+    xe = min(img.shape[1], x1 + 30)
+    ys = max(0, y0 - margin)
+    ye = min(img.shape[0], y1 + margin)
+    crop = img[ys:ye, xs:xe]
+    if crop.size == 0:
+        return None
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    gray = cv2.GaussianBlur(gray, (5, 5), 0)
+    circles = cv2.HoughCircles(
+        gray, cv2.HOUGH_GRADIENT, 1, 20, param1=50, param2=15, minRadius=5, maxRadius=30
+    )
+    if circles is None:
+        return None
+    cx, cy, r = max(circles[0], key=lambda c: c[2])
+    canny = cv2.Canny(gray, 50, 150)
+    mask = np.zeros_like(canny)
+    inner_r = int(r * 0.55)
+    cv2.circle(mask, (int(cx), int(cy)), inner_r, 255, 2)
+    count = cv2.countNonZero(cv2.bitwise_and(canny, mask))
+    coverage = count / (2 * math.pi * inner_r)
+    if coverage > 0.6:
+        return "◎"
+    return "○"
 
 
 def extract(path: str) -> dict:
@@ -229,7 +267,9 @@ def extract(path: str) -> dict:
     groups = _group_skills(res)
     logger.debug("Grouped into %d skill boxes", len(groups))
     for x0, y0, x1, y1, text in groups:
-        # Circle glyph detection removed; rely solely on OCR text
+        circle = _detect_circle(img, (x0, y0, x1, y1))
+        if circle and circle not in text:
+            text = f"{text} {circle}"
         key = _norm(text)
         if not key:
             continue
