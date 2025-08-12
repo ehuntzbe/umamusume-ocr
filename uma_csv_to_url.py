@@ -104,11 +104,11 @@ def load_skill_mapping() -> Dict[str, str]:
         data = json.load(f)
     mapping: Dict[str, str] = {}
     for skill_id, names in data.items():
-        for name in names:
+        for i, name in enumerate(names):
             key = name.lower()
             existing = mapping.get(key)
             if existing is None or (
-                existing.startswith("9") and not skill_id.startswith("9")
+                i == 0 and existing.startswith("9") and not skill_id.startswith("9")
             ):
                 mapping[key] = skill_id
     return mapping
