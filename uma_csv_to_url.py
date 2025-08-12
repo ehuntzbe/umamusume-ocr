@@ -30,6 +30,7 @@ from typing import List, Dict, Callable
 import tkinter as tk
 from tkinter import ttk
 
+import logging
 from dotenv import load_dotenv
 from rapidfuzz import process, fuzz
 
@@ -57,6 +58,9 @@ DEFAULT_RACEDEF = {
 load_dotenv(Path(__file__).with_name(".env"))
 
 LOCAL_WEB_LOGGING = os.getenv("LOCAL_WEB_LOGGING", "").strip().lower() == "true"
+
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, log_level, logging.INFO))
 
 @dataclass
 class Horse:
@@ -97,20 +101,24 @@ def ensure_repo(url: str, path: Path) -> None:
         subprocess.run(["git", "clone", "--depth", "1", url, str(path)], check=True)
 
 
-def load_skill_mapping() -> Dict[str, str]:
+def load_skill_mapping() -> Dict[str, Dict[str, str]]:
     ensure_repo(REPO_URL_TOOLS, TOOLS_DIR)
     skill_file = TOOLS_DIR / "umalator-global" / "skillnames.json"
     with open(skill_file, encoding="utf-8") as f:
         data = json.load(f)
-    mapping: Dict[str, str] = {}
+    mapping: Dict[str, Dict[str, str]] = {}
     for skill_id, names in data.items():
         for name in names:
             key = name.lower()
-            existing = mapping.get(key)
-            if existing is None or (
-                existing.startswith("9") and not skill_id.startswith("9")
-            ):
-                mapping[key] = skill_id
+            entry = mapping.setdefault(key, {"normal": "", "inherited": ""})
+            if skill_id.startswith("9"):
+                if not entry["inherited"]:
+                    entry["inherited"] = skill_id
+            else:
+                if not entry["normal"]:
+                    entry["normal"] = skill_id
+            logging.debug("Skill mapping %s -> %s", key, entry)
+    logging.debug("Loaded %d skill mappings", len(mapping))
     return mapping
 
 
@@ -145,15 +153,36 @@ def load_uma_lookup() -> tuple[Dict[str, str], Dict[str, Dict[str, str]]]:
 UMA_NAME_MAP, UMA_OUTFIT_MAP = load_uma_lookup()
 
 
-def parse_horse(row: Dict[str, str], skill_map: Dict[str, str]) -> Horse:
+def parse_horse(row: Dict[str, str], skill_map: Dict[str, Dict[str, str]]) -> Horse:
+    logging.debug("Parsing horse row: %s", row)
     skills: List[str] = []
-    for name in row.get("Skills", "").split("|"):
-        key = name.strip().lower()
-        if not key:
+    skill_names = [n.strip().lower() for n in row.get("Skills", "").split("|") if n.strip()]
+    for idx, key in enumerate(skill_names):
+        ids = skill_map.get(key)
+        if not ids:
+            logging.debug("Skill '%s' not found in mapping", key)
             continue
-        skill_id = skill_map.get(key)
+        skill_id = None
+        if idx == 0:
+            if ids.get("normal"):
+                skill_id = ids["normal"]
+            elif ids.get("inherited"):
+                skill_id = ids["inherited"]
+        else:
+            if ids.get("inherited"):
+                skill_id = ids["inherited"]
+            elif ids.get("normal"):
+                skill_id = ids["normal"]
         if skill_id:
             skills.append(skill_id)
+            logging.debug(
+                "Mapped skill '%s' at index %d to ID %s",
+                key,
+                idx,
+                skill_id,
+            )
+        else:
+            logging.debug("No ID found for skill '%s'", key)
     name_input = row.get("Name", "")
     epithet_input = row.get("Epithet", "")
     canonical_name = name_input
@@ -169,6 +198,7 @@ def parse_horse(row: Dict[str, str], skill_map: Dict[str, str]) -> Horse:
         match = process.extractOne(key, ep_map.keys(), scorer=fuzz.ratio)
         if match:
             outfit_id = ep_map[match[0]]
+    logging.debug("Final skill IDs for horse '%s': %s", canonical_name, skills)
     return Horse(
         name=canonical_name,
         outfitId=outfit_id,
