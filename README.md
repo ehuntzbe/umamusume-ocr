@@ -81,15 +81,23 @@ The scripts read configuration from `.env` in the project root. Available settin
 
    A GUI lists the runners in `data/runners.csv`. Select two entries and the tool opens your browser to a locally served copy of UmaLator preloaded with those runners. Copy the portion of the URL after `index.html` to share or append to the public instance at https://alpha123.github.io/uma-tools/umalator-global/ as long as both versions remain in sync.
 
-### Clipboard watcher (Windows)
+### Clipboard watcher
 
-For a faster workflow on Windows, you can monitor the clipboard for new screenshots:
+For a faster workflow, you can monitor the clipboard for new screenshots:
 
 ```bash
 python uma_clipboard_ocr.py
 ```
 
-Use `Win+Shift+S` to capture a region of the screen. When an image is copied to the clipboard, the script saves it, extracts stats and skills, appends the data to `data/runners.csv`, and moves the image to `data/processed/` automatically.
+When an image is copied to your clipboard, the script saves it, extracts stats and skills, appends the data to `data/runners.csv`, and moves the image to `data/processed/` automatically. This script works on Windows, macOS, and Linux.
+
+### Taking screenshots
+
+Use your operating system's shortcut to capture a region of the screen and copy it to the clipboard:
+
+- **Windows**: `Win+Shift+S`
+- **macOS**: `Cmd+Ctrl+Shift+4`
+- **Linux**: use your desktop environment's screenshot tool (e.g., `gnome-screenshot -a`)
 
 ### GUI alternative
 

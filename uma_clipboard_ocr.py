@@ -30,7 +30,7 @@ def _save_temp(img: Image.Image) -> Path:
 
 
 def main() -> None:
-    print("Watching clipboard for images. Use Win+Shift+S to capture a region. Press Ctrl+C to quit.")
+    print("Watching clipboard for images. Use your OS screenshot shortcut to capture a region. Press Ctrl+C to quit.")
     PROCESSED_DIR.mkdir(exist_ok=True)
     last_hash: Optional[str] = None
     while True:
