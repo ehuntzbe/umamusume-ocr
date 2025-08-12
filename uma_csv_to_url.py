@@ -26,12 +26,11 @@ import threading
 from functools import partial
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Callable, DefaultDict
+from typing import List, Dict, Callable
 import tkinter as tk
 from tkinter import ttk
 
 import logging
-from collections import defaultdict
 from dotenv import load_dotenv
 from rapidfuzz import process, fuzz
 
@@ -60,7 +59,8 @@ load_dotenv(Path(__file__).with_name(".env"))
 
 LOCAL_WEB_LOGGING = os.getenv("LOCAL_WEB_LOGGING", "").strip().lower() == "true"
 
-logging.basicConfig(level=logging.DEBUG)
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, log_level, logging.INFO))
 
 @dataclass
 class Horse:
@@ -156,30 +156,29 @@ UMA_NAME_MAP, UMA_OUTFIT_MAP = load_uma_lookup()
 def parse_horse(row: Dict[str, str], skill_map: Dict[str, Dict[str, str]]) -> Horse:
     logging.debug("Parsing horse row: %s", row)
     skills: List[str] = []
-    skill_counts: DefaultDict[str, int] = defaultdict(int)
-    for name in row.get("Skills", "").split("|"):
-        key = name.strip().lower()
-        if not key:
-            continue
+    skill_names = [n.strip().lower() for n in row.get("Skills", "").split("|") if n.strip()]
+    for idx, key in enumerate(skill_names):
         ids = skill_map.get(key)
         if not ids:
             logging.debug("Skill '%s' not found in mapping", key)
             continue
-        count = skill_counts[key]
         skill_id = None
-        if count == 0 and ids.get("normal"):
-            skill_id = ids["normal"]
-        elif ids.get("inherited"):
-            skill_id = ids["inherited"]
-        elif ids.get("normal"):
-            skill_id = ids["normal"]
+        if idx == 0:
+            if ids.get("normal"):
+                skill_id = ids["normal"]
+            elif ids.get("inherited"):
+                skill_id = ids["inherited"]
+        else:
+            if ids.get("inherited"):
+                skill_id = ids["inherited"]
+            elif ids.get("normal"):
+                skill_id = ids["normal"]
         if skill_id:
             skills.append(skill_id)
-            skill_counts[key] += 1
             logging.debug(
-                "Mapped skill '%s' occurrence %d to ID %s",
+                "Mapped skill '%s' at index %d to ID %s",
                 key,
-                count + 1,
+                idx,
                 skill_id,
             )
         else:
