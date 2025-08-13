@@ -15,10 +15,10 @@ Added Mayano Top Gun to C:\Users\umamusume-ocr\umamusume-ocr\data\runners.csv
 ```
 
 Opening the UmaLator to URL script displays this screen of all the runners you've taken screenshots of.
-![Window containing two columns of selectable UmaMusume runner stats and skills.](./github-images/pick-runner.jpg)
+![Window containing two columns of selectable UmaMusume runner stats and skills.](./github-images/pick-runner.JPG)
 
 Selecting a pair of runners and clicking the button at the bottom opens a local copy of the UmaLator. The selection window stays open, so you can keep picking runners and opening new tabs.
-![UmaLator Global, populated with the select runners' stats and skills, running locally.](./github-images/local-umalator.jpg)
+![UmaLator Global, populated with the select runners' stats and skills, running locally.](./github-images/local-umalator.JPG)
 
 ## Purpose
 
