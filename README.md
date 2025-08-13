@@ -1,5 +1,25 @@
 # umamusume-ocr
 
+## How It Looks
+
+With the capture script running, taking a screenshot generates this output.
+
+```bash
+INFO:uma_ocr_to_csv:Loaded 462 skills
+INFO:uma_ocr_to_csv:Loaded 30 umas
+INFO:uma_ocr_to_csv:Loaded 32 epithets
+Watching clipboard for images. Use your OS screenshot shortcut to capture a region. Press Ctrl+C to quit.
+INFO:uma_ocr_to_csv:Running OCR on C:\Users\umamusume-ocr\umamusume-ocr\data\clip_1755091036.png
+INFO:uma_ocr_to_csv:Extracted stats {'Speed': '1089', 'Stamina': '922', 'Power': '629', 'Guts': '379', 'Wit': '263', 'Skills': 'Flashy☆Landing|Red Shift/LP1211-M|Corner Adept ○|Straightaway Recovery|Homestretch Haste|Escape Artist|Flustered Front Runners|Medium Corners ◎|Dodging Danger', 'Name': 'Mayano Top Gun', 'Epithet': '[Scramble☆Zone]'} with 9 skills
+Added Mayano Top Gun to C:\Users\umamusume-ocr\umamusume-ocr\data\runners.csv
+```
+
+Opening the UmaLator to URL script displays this screen of all the runners you've taken screenshots of.
+![Window containing two columns of selectable UmaMusume runner stats and skills.](./github-images/pick-runner.jpg)
+
+Selecting a pair of runners and clicking the button at the bottom opens a local copy of the UmaLator. The selection window stays open, so you can keep picking runners and opening new tabs.
+![UmaLator Global, populated with the select runners' stats and skills, running locally.](./github-images/local-umalator.jpg)
+
 ## Purpose
 
 Convert Uma Musume race screenshots into structured data and open them in the UmaLator simulator.
